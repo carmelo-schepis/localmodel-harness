@@ -16,6 +16,7 @@ This record separates checks against the application from earlier checks against
 - `npm run lint` — passed without lint warnings after marking the one-time bootstrap/project-identity effects intentional.
 - `npm test` — passed; three URL normalization and rejection tests.
 - `npm run build` — passed for client and server.
+- Visual check against the supplied reference: the deployed page at 1280×800 computed to 16px base/work text, 14px navigation, 15px search heading and composer text, and a 67.84px workspace hero. The theme computed to black `#000`, white text `#fff`, and white buttons with black text. At 390×844 the document stayed 390px wide and the header title stayed on one line. The browser reported no console errors or failed network requests.
 - `npm audit --omit=dev --audit-level=high` — passed with zero production dependency vulnerabilities after upgrading `@fastify/static` to 10.1.10. The complete development dependency audit still reports findings and has not been remediated.
 - `docker compose config --quiet` — passed with a generated local `SEARXNG_SECRET`; the supported `scripts/start.sh` creates the ignored `.env` file on first use.
 - `./scripts/start.sh` — the corrected pinned SearXNG image and production app built and started successfully. The app data volume is writable by the unprivileged app user. The only published port is `127.0.0.1:3000`.
