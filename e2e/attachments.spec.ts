@@ -88,6 +88,18 @@ test('persisted messages reload without the welcome area', async ({ page }) => {
   await expect(page.getByRole('heading', { name: /What are you looking into\?/ })).toHaveCount(0);
 });
 
+test('site text and composer placeholder render white', async ({ page }) => {
+  await mockApp(page);
+  await page.goto('/');
+  const colors = await page.locator('body *').evaluateAll(elements => elements
+    .filter(element => element.children.length === 0 && element.textContent?.trim())
+    .map(element => getComputedStyle(element).color));
+  expect([...new Set(colors)]).toEqual(['rgb(255, 255, 255)']);
+  const placeholderColor = await page.getByRole('textbox', { name: 'Message' }).evaluate(element => getComputedStyle(element, '::placeholder').color);
+  expect(placeholderColor).toBe('rgb(255, 255, 255)');
+  await expect(page.getByRole('button', { name: 'Search' })).toHaveCSS('opacity', '1');
+});
+
 test('no vision model opens the requested dialog and cancel retains the staged image', async ({ page }) => {
   await mockApp(page, false);
   await page.goto('/');
