@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Fieldnotes — quiet, monochrome research workspace
+   local-harness — quiet, monochrome research workspace
    Minimal surface treatment, a single spacing scale, and restrained motion.
    ========================================================================== */
 
@@ -1932,3 +1932,10 @@ a {
     transition-duration: 0.01ms !important;
   }
 }
+
+.composer-model { display: flex; align-items: center; min-width: 0; max-width: 60%; }
+.composer-model select { min-width: 0; max-width: 100%; appearance: none; border: 0; border-radius: 4px; padding: 3px 5px; background: transparent; color: var(--text-2); font: inherit; text-overflow: ellipsis; cursor: pointer; }
+.composer-model select:hover { color: var(--text); background: var(--panel); }
+.composer-model select:disabled { cursor: default; opacity: .6; }
+.composer-model svg { flex-shrink: 0; pointer-events: none; }
+.composer-model option { background: var(--panel); color: var(--text); }

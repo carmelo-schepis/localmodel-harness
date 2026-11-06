@@ -1,6 +1,6 @@
-# Fieldnotes
+# local-harness
 
-Fieldnotes is a private, locally hosted research workspace for Ollama. It has a streaming chat, multiple server/model discovery, web search, image attachments, local document ingestion, CSV workbench, Markdown drafts, technical diagnosis cases, and a project library.
+local-harness is a private, locally hosted research workspace for Ollama. It has a streaming chat, multiple server/model discovery, web search, image attachments, local document ingestion, CSV workbench, Markdown drafts, technical diagnosis cases, and a project library.
 
 ## Start with Docker
 
