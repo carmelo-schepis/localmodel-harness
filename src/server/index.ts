@@ -23,6 +23,8 @@ const app = Fastify({ logger: true, bodyLimit: 12 * 1024 * 1024 });
 await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 8 } });
 await app.register(fastifyStatic, { root: join(process.cwd(), 'dist'), prefix: '/' });
 const timestamp = () => new Date().toISOString();
+const activeMessageIds = new Set<string>();
+const activeProjects = new Set<string>();
 const readJson = async (res: Response) => {
   if (!res.ok) throw new Error(`Hugo returned ${res.status}: ${(await res.text()).slice(0, 500)}`);
   return res.json();
@@ -53,35 +55,73 @@ app.delete('/api/endpoints/:id', async (req, reply) => { const result = db.prepa
 
 app.get('/api/projects', async () => db.prepare('SELECT * FROM projects ORDER BY created_at').all());
 app.post('/api/projects', async req => { const { name } = req.body as {name?:string}; const p={id:randomUUID(),name:name?.trim()||'New project',created_at:timestamp()}; db.prepare('INSERT INTO projects VALUES (?,?,?)').run(p.id,p.name,p.created_at); return p; });
-app.get('/api/messages/:project', async req => db.prepare('SELECT * FROM messages WHERE project_id=? ORDER BY created_at').all((req.params as {project:string}).project));
+app.get('/api/messages/:project', async req => db.prepare('SELECT * FROM messages WHERE project_id=? ORDER BY created_at,rowid').all((req.params as {project:string}).project));
 
 app.post('/api/chat', async (req, reply) => {
   const { endpoint, model, project, prompt, history = [], image, mode, toolsEnabled = false } = req.body as {endpoint:string;model:string;project:string;prompt:string;history:Array<{role:string;content:unknown}>;image?:string;mode?:string;toolsEnabled?:boolean};
   if (!endpoint || !model || !project || !prompt?.trim()) return reply.code(400).send({error:'Choose a model, project, and message.'});
   const bases = endpointBases(endpoint);
   const images = image ? [image.replace(/^data:image\/[^;]+;base64,/, '')] : undefined;
+  // A retry after an interrupted stream may already have a persisted trailing user turn.
+  // The browser's async refresh may still be in flight, so consult SQLite as well as history.
+  const persistedHistory = (db.prepare('SELECT role,content FROM messages WHERE project_id=? ORDER BY created_at DESC,rowid DESC LIMIT 10').all(project) as Array<{role:string;content:string}>).reverse();
+  const idempotencyKey = req.headers['idempotency-key'];
+  const validMessageId = typeof idempotencyKey === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey) ? idempotencyKey : undefined;
+  const keyedMessage = validMessageId ? db.prepare('SELECT project_id,role,content FROM messages WHERE id=?').get(validMessageId) as {project_id:string;role:string;content:string}|undefined : undefined;
+  if (keyedMessage && (keyedMessage.project_id !== project || keyedMessage.role !== 'user' || keyedMessage.content !== prompt)) return reply.code(409).send({error:'This message identifier is already attached to a different turn.'});
+  const existingMessage = keyedMessage ? {role:keyedMessage.role,content:keyedMessage.content} : undefined;
+  if (existingMessage) {
+    const followingMessage = db.prepare(`SELECT next.role,next.content FROM messages AS keyed JOIN messages AS next ON next.project_id=keyed.project_id AND next.rowid>keyed.rowid WHERE keyed.project_id=? AND keyed.id=? ORDER BY next.rowid LIMIT 1`).get(project, validMessageId) as {role:string;content:string}|undefined;
+    if (followingMessage?.role === 'assistant') {
+      const replayId = randomUUID();
+      reply.hijack();
+      reply.raw.writeHead(200, {'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});
+      reply.raw.write(`data: ${JSON.stringify({id:replayId,delta:followingMessage.content})}\n\n`);
+      reply.raw.write(`data: ${JSON.stringify({id:replayId,done:true,mode})}\n\n`);
+      reply.raw.end();
+      return;
+    }
+  }
+  const persistedLastTurn = persistedHistory.at(-1);
+  // The optional idempotency key identifies the exact persisted user row across retries, even
+  // when earlier turns repeat the same text or the local fork history contains the same prompt.
+  // Older clients retain best-effort prompt-based retry detection.
+  const retryingPersistedTurn = validMessageId ? !!existingMessage : persistedLastTurn?.role === 'user' && persistedLastTurn.content === prompt && history.at(-1)?.content !== prompt;
+  // Caller history may contain a browser-local fork snapshot; preserve it verbatim.
   const messages: Array<Record<string, unknown>> = [...history, {role:'user',content:prompt,...(images?{images}:{})}];
+  const activeMessageKey = validMessageId;
+  if (activeMessageKey && activeMessageIds.has(activeMessageKey)) return reply.code(409).send({error:'This message is already being processed.'});
+  if (activeProjects.has(project)) return reply.code(409).send({error:'This project already has a request in progress.'});
+  if (activeMessageKey) activeMessageIds.add(activeMessageKey);
+  activeProjects.add(project);
+  const releaseChatLocks = () => { activeProjects.delete(project); if(activeMessageKey)activeMessageIds.delete(activeMessageKey); };
   let toolDefinitions: Awaited<ReturnType<typeof ollamaResearchTools>> = [];
-  if (toolsEnabled && ['Research', 'Diagnose'].includes(mode ?? '')) toolDefinitions = await ollamaResearchTools();
+  try { if (toolsEnabled && ['Research', 'Diagnose'].includes(mode ?? '')) toolDefinitions = await ollamaResearchTools(); }
+  catch (error) { releaseChatLocks(); throw error; }
   const abort = new AbortController();
   req.raw.once('aborted', () => abort.abort());
-  const upstream = await fetch(`${bases.native}/api/chat`, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model,messages,stream:true,think:false,...(toolDefinitions.length?{tools:toolDefinitions}:{}),options:{num_ctx:8192}}),signal:abort.signal});
-  if (!upstream.ok || !upstream.body) return reply.code(502).send({error:'Hugo could not start this request.'});
+  reply.raw.once('close', () => { if (!reply.raw.writableEnded) abort.abort(); });
+  let upstream:Response;
+  try { upstream = await fetch(`${bases.native}/api/chat`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model,messages,stream:true,think:false,...(toolDefinitions.length?{tools:toolDefinitions}:{}),options:{num_ctx:8192}}),signal:abort.signal}); }
+  catch (error) { releaseChatLocks(); throw error; }
+  if (!upstream.ok || !upstream.body) { releaseChatLocks(); return reply.code(502).send({error:'Hugo could not start this request.'}); }
   const id=randomUUID(), created=timestamp();
-  db.prepare('INSERT INTO messages VALUES (?,?,?,?,?,?)').run(randomUUID(),project,'user',prompt,model,created);
-  reply.hijack();
-  reply.raw.writeHead(200, {'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});
+  try { if (!retryingPersistedTurn) db.prepare('INSERT INTO messages VALUES (?,?,?,?,?,?)').run(validMessageId ?? randomUUID(),project,'user',prompt,model,created); }
+  catch (error) { abort.abort(); releaseChatLocks(); if((error as Error & {code?:string}).code==='SQLITE_CONSTRAINT_PRIMARYKEY')return reply.code(409).send({error:'This message identifier is already attached to a different turn.'}); throw error; }
   let complete='';
   const emit=(event:Record<string,unknown>)=>{if(!reply.raw.writableEnded)reply.raw.write(`data: ${JSON.stringify({id,...event})}\n\n`);};
   try {
+    reply.hijack();
+    reply.raw.writeHead(200, {'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});
     const seenCalls=new Set<string>();
     for(let step=0;step<=3;step++){
       const response=step===0?upstream:await fetch(`${bases.native}/api/chat`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model,messages,stream:true,think:false,...(toolDefinitions.length?{tools:toolDefinitions}:{}),options:{num_ctx:8192}}),signal:abort.signal});
       if(!response.ok||!response.body)throw new Error(`Hugo returned HTTP ${response.status}.`);
-      const reader=response.body.getReader(),decoder=new TextDecoder();let buffered='';const calls:Array<{id?:string;function?:{name?:string;arguments?:unknown}}>=[];
-      const consume=(raw:string)=>{for(const line of raw.split('\n')){if(!line.trim())continue;let item:{message?:{content?:string;tool_calls?:Array<{id?:string;function?:{name?:string;arguments?:unknown}}>};done?:boolean};try{item=JSON.parse(line)}catch{continue}if(item.message?.content){complete+=item.message.content;emit({delta:item.message.content});}if(item.message?.tool_calls?.length)calls.push(...item.message.tool_calls);}}
+      const reader=response.body.getReader(),decoder=new TextDecoder();let buffered='',upstreamDone=false;const calls:Array<{id?:string;function?:{name?:string;arguments?:unknown}}>=[];
+      const consume=(raw:string)=>{for(const line of raw.split('\n')){if(!line.trim())continue;let item:{message?:{content?:string;tool_calls?:Array<{id?:string;function?:{name?:string;arguments?:unknown}}>};done?:boolean};try{item=JSON.parse(line)}catch{continue}if(item.done===true)upstreamDone=true;if(item.message?.content){complete+=item.message.content;emit({delta:item.message.content});}if(item.message?.tool_calls?.length)calls.push(...item.message.tool_calls);}}
       while(true){const {value,done}=await reader.read();if(done)break;buffered+=decoder.decode(value,{stream:true});const lines=buffered.split('\n');buffered=lines.pop()??'';consume(lines.join('\n'));}
       consume(buffered);
+      if(!upstreamDone)throw new Error('Hugo stream ended before the response completed.');
       if(!calls.length)break;
       if(step===3){emit({error:'Stopped after three MCP tool rounds to keep this run bounded.'});break;}
       messages.push({role:'assistant',content:'',tool_calls:calls});
@@ -97,7 +137,7 @@ app.post('/api/chat', async (req, reply) => {
     }
     if(complete)db.prepare('INSERT INTO messages VALUES (?,?,?,?,?,?)').run(randomUUID(),project,'assistant',complete,model,timestamp());
     emit({done:true,mode});
-  } catch(error){emit({error:error instanceof Error?error.message:'Request interrupted'});} finally {reply.raw.end();}
+  } catch(error){emit({error:error instanceof Error?error.message:'Request interrupted'});} finally {reply.raw.end();releaseChatLocks();}
 });
 
 app.post('/api/upload/:project', async (req, reply) => {
