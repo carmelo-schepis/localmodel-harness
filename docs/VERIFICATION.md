@@ -13,7 +13,7 @@ This record separates checks against the application from earlier checks against
 ## Commands and results
 
 - `npm run typecheck` — passed.
-- `npm run lint` — passed with two React effect dependency warnings.
+- `npm run lint` — passed without lint warnings after marking the one-time bootstrap/project-identity effects intentional.
 - `npm test` — passed; three URL normalization and rejection tests.
 - `npm run build` — passed for client and server.
 - `npm audit --omit=dev --audit-level=high` — passed with zero production dependency vulnerabilities after upgrading `@fastify/static` to 10.1.10. The complete development dependency audit still reports findings and has not been remediated.
@@ -24,12 +24,13 @@ This record separates checks against the application from earlier checks against
 - Deployment container route: from inside the running app container, `GET http://100.126.194.51:11434/api/tags` returned HTTP 200 with eight models. Registering the endpoint via the app's HTTP route discovered all eight and their capability metadata.
 - Deployment chat: streamed `container connection successful` through the app API using `qwen3:1.7b` and the container-to-Ollama route; the stream delivered its completion event.
 - Bundled search network path: from inside the app container, `http://searxng:8080/search?q=ollama&format=json` returned HTTP 200 with JSON. The app search route returned results. This verifies search connectivity only; it does not make results a cited or source-inspected research workflow.
+- Live MCP round trip: the app supplied the MCP-discovered `research__search_web` schema to `qwen3:1.7b`; Ollama requested it, the official MCP SDK client dispatched it to the bundled search server, SearXNG returned results, and the model produced a follow-up answer citing returned result URLs. The app emitted tool running/completed activity events; the browser also completed a tool-directed research prompt. This was one bounded successful case, not coverage of arbitrary MCP servers or failure cases.
 - `docs/ENDPOINT_VERIFICATION.md` records pre-implementation live probes for text, a tool-call/result exchange, image input, and embeddings. These were direct host-to-Ollama calls, not proof that those complete product workflows exist in this app.
 
 ## Not verified or not implemented
 
 - Search currently returns provider snippets and is not a cited research workflow.
-- Chat currently reports an error if Ollama returns a tool call. There is no MCP SDK tool execution loop, generic MCP connections UI, or bundled MCP research server yet.
+- The bundled MCP path supports `search_web` only. Custom stdio/Streamable HTTP server configuration, `fetch_page`, hardened public URL fetching, durable tool-activity history, and approval policies are not implemented.
 - Image upload plumbing exists, but a live image request through the app UI has not been accepted. PDF extraction is text-based; scanned-page vision routing is absent.
 - There is no semantic retrieval, persistent source versioning/citation resolution, or claim-evidence validation.
 - CSV actions are minimal and not the required deterministic preview/apply/reversal workflow. Essay generation/revision/version diffs, structured log analysis, data-quality diagnostics, project export/restore, and the specified Playwright acceptance suite remain outstanding.

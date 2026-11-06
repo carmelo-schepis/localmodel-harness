@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { endpointBases } from './ollama/urls.js';
+import { callResearchTool, ollamaResearchTools } from './research-mcp.js';
 
 const dataDir = process.env.DATA_DIR ?? './data';
 mkdirSync(join(dataDir, 'uploads'), { recursive: true });
@@ -55,19 +56,48 @@ app.post('/api/projects', async req => { const { name } = req.body as {name?:str
 app.get('/api/messages/:project', async req => db.prepare('SELECT * FROM messages WHERE project_id=? ORDER BY created_at').all((req.params as {project:string}).project));
 
 app.post('/api/chat', async (req, reply) => {
-  const { endpoint, model, project, prompt, history = [], image, mode } = req.body as {endpoint:string;model:string;project:string;prompt:string;history:Array<{role:string;content:unknown}>;image?:string;mode?:string};
+  const { endpoint, model, project, prompt, history = [], image, mode, toolsEnabled = false } = req.body as {endpoint:string;model:string;project:string;prompt:string;history:Array<{role:string;content:unknown}>;image?:string;mode?:string;toolsEnabled?:boolean};
   if (!endpoint || !model || !project || !prompt?.trim()) return reply.code(400).send({error:'Choose a model, project, and message.'});
   const bases = endpointBases(endpoint);
   const images = image ? [image.replace(/^data:image\/[^;]+;base64,/, '')] : undefined;
-  const messages = [...history, {role:'user',content:prompt,...(images?{images}:{})}];
-  const upstream = await fetch(`${bases.native}/api/chat`, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model,messages,stream:true,think:false,options:{num_ctx:8192}}),signal:AbortSignal.timeout(10*60*1000)});
+  const messages: Array<Record<string, unknown>> = [...history, {role:'user',content:prompt,...(images?{images}:{})}];
+  let toolDefinitions: Awaited<ReturnType<typeof ollamaResearchTools>> = [];
+  if (toolsEnabled && ['Research', 'Diagnose'].includes(mode ?? '')) toolDefinitions = await ollamaResearchTools();
+  const abort = new AbortController();
+  req.raw.once('aborted', () => abort.abort());
+  const upstream = await fetch(`${bases.native}/api/chat`, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model,messages,stream:true,think:false,...(toolDefinitions.length?{tools:toolDefinitions}:{}),options:{num_ctx:8192}}),signal:abort.signal});
   if (!upstream.ok || !upstream.body) return reply.code(502).send({error:'Ollama could not start this request.'});
   const id=randomUUID(), created=timestamp();
   db.prepare('INSERT INTO messages VALUES (?,?,?,?,?,?)').run(randomUUID(),project,'user',prompt,model,created);
   reply.hijack();
   reply.raw.writeHead(200, {'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});
   let complete='';
-  try { const reader=upstream.body.getReader(); const decoder=new TextDecoder(); while(true){const {value,done}=await reader.read();if(done)break; for(const line of decoder.decode(value,{stream:true}).split('\n')){if(!line.trim())continue; try{const item=JSON.parse(line) as {message?:{content?:string;thinking?:string;tool_calls?:unknown[]};done?:boolean};if(item.message?.content){complete+=item.message.content;reply.raw.write(`data: ${JSON.stringify({id,delta:item.message.content})}\n\n`);}if(item.message?.tool_calls?.length)reply.raw.write(`data: ${JSON.stringify({id,error:'This model requested a tool, but no connected MCP server can handle it yet.'})}\n\n`);if(item.done)break;}catch{continue;}}} if(complete)db.prepare('INSERT INTO messages VALUES (?,?,?,?,?,?)').run(randomUUID(),project,'assistant',complete,model,timestamp()); reply.raw.write(`data: ${JSON.stringify({id,done:true,mode})}\n\n`); } catch(error){ reply.raw.write(`data: ${JSON.stringify({id,error:error instanceof Error?error.message:'Request interrupted'})}\n\n`);} finally {reply.raw.end();}
+  const emit=(event:Record<string,unknown>)=>{if(!reply.raw.writableEnded)reply.raw.write(`data: ${JSON.stringify({id,...event})}\n\n`);};
+  try {
+    const seenCalls=new Set<string>();
+    for(let step=0;step<=3;step++){
+      const response=step===0?upstream:await fetch(`${bases.native}/api/chat`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model,messages,stream:true,think:false,...(toolDefinitions.length?{tools:toolDefinitions}:{}),options:{num_ctx:8192}}),signal:abort.signal});
+      if(!response.ok||!response.body)throw new Error(`Ollama returned HTTP ${response.status}.`);
+      const reader=response.body.getReader(),decoder=new TextDecoder();let buffered='';const calls:Array<{id?:string;function?:{name?:string;arguments?:unknown}}>=[];
+      const consume=(raw:string)=>{for(const line of raw.split('\n')){if(!line.trim())continue;let item:{message?:{content?:string;tool_calls?:Array<{id?:string;function?:{name?:string;arguments?:unknown}}>};done?:boolean};try{item=JSON.parse(line)}catch{continue}if(item.message?.content){complete+=item.message.content;emit({delta:item.message.content});}if(item.message?.tool_calls?.length)calls.push(...item.message.tool_calls);}}
+      while(true){const {value,done}=await reader.read();if(done)break;buffered+=decoder.decode(value,{stream:true});const lines=buffered.split('\n');buffered=lines.pop()??'';consume(lines.join('\n'));}
+      consume(buffered);
+      if(!calls.length)break;
+      if(step===3){emit({error:'Stopped after three MCP tool rounds to keep this run bounded.'});break;}
+      messages.push({role:'assistant',content:'',tool_calls:calls});
+      for(const call of calls){
+        const toolName=call.function?.name??'';let argumentsKey='';try{argumentsKey=JSON.stringify(call.function?.arguments??{})}catch{argumentsKey='invalid'}
+        const signature=`${toolName}:${argumentsKey}`;
+        if(seenCalls.has(signature)){messages.push({role:'tool',tool_name:toolName,content:'This identical tool call was already run in this request. Choose a different search or answer from the existing evidence.'});continue;}
+        seenCalls.add(signature);
+        emit({activity:{tool:toolName,status:'running'}});
+        try{const result=await callResearchTool(call);messages.push({role:'tool',tool_name:toolName,content:result});emit({activity:{tool:toolName,status:'complete',result:result.slice(0,700)}});}
+        catch(error){const message=error instanceof Error?error.message:'MCP tool failed.';messages.push({role:'tool',tool_name:toolName,content:`Tool error: ${message}`});emit({activity:{tool:toolName,status:'error',message}});}
+      }
+    }
+    if(complete)db.prepare('INSERT INTO messages VALUES (?,?,?,?,?,?)').run(randomUUID(),project,'assistant',complete,model,timestamp());
+    emit({done:true,mode});
+  } catch(error){emit({error:error instanceof Error?error.message:'Request interrupted'});} finally {reply.raw.end();}
 });
 
 app.post('/api/upload/:project', async (req, reply) => {
