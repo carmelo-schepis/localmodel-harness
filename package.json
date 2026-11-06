@@ -1,5 +1,5 @@
 {
-  "name": "ollama-research-harness",
+  "name": "local-harness",
   "version": "0.1.0",
   "private": true,
   "type": "module",
