@@ -1,0 +1,397 @@
+{
+  "tested_at_utc": "2026-11-06T00:17:39.482947+00:00",
+  "endpoint": "http://100.126.194.51:11434/v1",
+  "tests": [
+    {
+      "test": "version",
+      "path": "/api/version",
+      "http_status": 200,
+      "seconds": 0.01,
+      "response": {
+        "version": "0.33.0"
+      }
+    },
+    {
+      "test": "model discovery",
+      "path": "/v1/models",
+      "http_status": 200,
+      "seconds": 0.0,
+      "response": {
+        "object": "list",
+        "data": [
+          {
+            "id": "embeddinggemma:latest",
+            "object": "model",
+            "created": 1788149251,
+            "owned_by": "library"
+          },
+          {
+            "id": "gemma3:12b",
+            "object": "model",
+            "created": 1787751432,
+            "owned_by": "library"
+          },
+          {
+            "id": "gemma3:4b",
+            "object": "model",
+            "created": 1787751105,
+            "owned_by": "library"
+          },
+          {
+            "id": "gemma3:1b",
+            "object": "model",
+            "created": 1787750608,
+            "owned_by": "library"
+          },
+          {
+            "id": "qwen2.5-coder:7b",
+            "object": "model",
+            "created": 1787749981,
+            "owned_by": "library"
+          },
+          {
+            "id": "dolphin3:8b",
+            "object": "model",
+            "created": 1787749948,
+            "owned_by": "library"
+          },
+          {
+            "id": "qwen3:8b",
+            "object": "model",
+            "created": 1787749945,
+            "owned_by": "library"
+          },
+          {
+            "id": "qwen3:1.7b",
+            "object": "model",
+            "created": 1787749075,
+            "owned_by": "library"
+          }
+        ]
+      }
+    },
+    {
+      "test": "capabilities embeddinggemma:latest",
+      "path": "/api/show",
+      "http_status": 200,
+      "seconds": 0.01,
+      "response": {
+        "capabilities": [
+          "embedding"
+        ],
+        "details": {
+          "parent_model": "embeddinggemma:300m-bf16",
+          "format": "gguf",
+          "family": "gemma3",
+          "families": [
+            "gemma3"
+          ],
+          "parameter_size": "307.58M",
+          "quantization_level": "BF16"
+        }
+      }
+    },
+    {
+      "test": "capabilities gemma3:12b",
+      "path": "/api/show",
+      "http_status": 200,
+      "seconds": 0.02,
+      "response": {
+        "capabilities": [
+          "completion",
+          "vision"
+        ],
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "gemma3",
+          "families": [
+            "gemma3"
+          ],
+          "parameter_size": "12.2B",
+          "quantization_level": "Q4_K_M"
+        }
+      }
+    },
+    {
+      "test": "capabilities gemma3:4b",
+      "path": "/api/show",
+      "http_status": 200,
+      "seconds": 0.02,
+      "response": {
+        "capabilities": [
+          "completion",
+          "vision"
+        ],
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "gemma3",
+          "families": [
+            "gemma3"
+          ],
+          "parameter_size": "4.3B",
+          "quantization_level": "Q4_K_M"
+        }
+      }
+    },
+    {
+      "test": "capabilities gemma3:1b",
+      "path": "/api/show",
+      "http_status": 200,
+      "seconds": 0.01,
+      "response": {
+        "capabilities": [
+          "completion"
+        ],
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "gemma3",
+          "families": [
+            "gemma3"
+          ],
+          "parameter_size": "999.89M",
+          "quantization_level": "Q4_K_M"
+        }
+      }
+    },
+    {
+      "test": "capabilities qwen2.5-coder:7b",
+      "path": "/api/show",
+      "http_status": 200,
+      "seconds": 0.02,
+      "response": {
+        "capabilities": [
+          "completion",
+          "tools",
+          "insert"
+        ],
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "qwen2",
+          "families": [
+            "qwen2"
+          ],
+          "parameter_size": "7.6B",
+          "quantization_level": "Q4_K_M"
+        }
+      }
+    },
+    {
+      "test": "capabilities dolphin3:8b",
+      "path": "/api/show",
+      "http_status": 200,
+      "seconds": 0.01,
+      "response": {
+        "capabilities": [
+          "completion"
+        ],
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "llama",
+          "families": [
+            "llama"
+          ],
+          "parameter_size": "8.0B",
+          "quantization_level": "Q4_K_M"
+        }
+      }
+    },
+    {
+      "test": "capabilities qwen3:8b",
+      "path": "/api/show",
+      "http_status": 200,
+      "seconds": 0.01,
+      "response": {
+        "capabilities": [
+          "completion",
+          "tools",
+          "thinking"
+        ],
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "qwen3",
+          "families": [
+            "qwen3"
+          ],
+          "parameter_size": "8.2B",
+          "quantization_level": "Q4_K_M"
+        }
+      }
+    },
+    {
+      "test": "capabilities qwen3:1.7b",
+      "path": "/api/show",
+      "http_status": 200,
+      "seconds": 0.01,
+      "response": {
+        "capabilities": [
+          "completion",
+          "tools",
+          "thinking"
+        ],
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "qwen3",
+          "families": [
+            "qwen3"
+          ],
+          "parameter_size": "2.0B",
+          "quantization_level": "Q4_K_M"
+        }
+      }
+    },
+    {
+      "test": "OpenAI-compatible text completion",
+      "path": "/v1/chat/completions",
+      "http_status": 200,
+      "seconds": 18.97,
+      "response": {
+        "id": "chatcmpl-730",
+        "object": "chat.completion",
+        "created": 1793924278,
+        "model": "gemma3:1b",
+        "system_fingerprint": "fp_ollama",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "connection successful\n"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 16,
+          "completion_tokens": 4,
+          "total_tokens": 20
+        }
+      }
+    },
+    {
+      "test": "native structured tool call",
+      "path": "/api/chat",
+      "seconds": 50.05,
+      "error": "timed out"
+    },
+    {
+      "test": "native vision image understanding",
+      "path": "/api/chat",
+      "seconds": 50.04,
+      "error": "timed out"
+    },
+    {
+      "test": "native embeddings",
+      "path": "/api/embed",
+      "http_status": 200,
+      "seconds": 2.92,
+      "response": {
+        "model": "embeddinggemma:latest",
+        "vectors": 1,
+        "dimensions": [
+          768
+        ],
+        "total_duration": 2910121312
+      }
+    },
+    {
+      "test": "native structured tool call, longer bounded retry",
+      "path": "/api/chat",
+      "client_timeout_seconds": 120,
+      "request_summary": {
+        "model": "qwen3:1.7b",
+        "num_predict": 64
+      },
+      "http_status": 200,
+      "response": {
+        "model": "qwen3:1.7b",
+        "created_at": "2026-11-06T00:22:13.636902126Z",
+        "message": {
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [
+            {
+              "id": "call_ujeqhasi",
+              "function": {
+                "index": 0,
+                "name": "echo_probe",
+                "arguments": {
+                  "value": "harness-ok"
+                }
+              }
+            }
+          ]
+        },
+        "done": true,
+        "done_reason": "stop",
+        "total_duration": 8350964921,
+        "load_duration": 5692122380,
+        "prompt_eval_count": 142,
+        "prompt_eval_duration": 1571866000,
+        "eval_count": 22,
+        "eval_duration": 1080463000
+      },
+      "seconds": 8.37
+    },
+    {
+      "test": "native tool result replay",
+      "path": "/api/chat",
+      "client_timeout_seconds": 120,
+      "request_summary": {
+        "model": "qwen3:1.7b",
+        "num_predict": 16
+      },
+      "http_status": 200,
+      "response": {
+        "model": "qwen3:1.7b",
+        "created_at": "2026-11-06T00:22:15.108477941Z",
+        "message": {
+          "role": "assistant",
+          "content": "The command `echo_probe with value harness-ok` was executed successfully, and the"
+        },
+        "done": true,
+        "done_reason": "length",
+        "total_duration": 1460986812,
+        "load_duration": 3324883,
+        "prompt_eval_count": 61,
+        "prompt_eval_duration": 680708000,
+        "eval_count": 16,
+        "eval_duration": 757698000
+      },
+      "seconds": 1.47
+    },
+    {
+      "test": "native vision, longer bounded retry",
+      "path": "/api/chat",
+      "client_timeout_seconds": 120,
+      "request_summary": {
+        "model": "gemma3:4b",
+        "num_predict": 8
+      },
+      "http_status": 200,
+      "response": {
+        "model": "gemma3:4b",
+        "created_at": "2026-11-06T00:22:59.55352341Z",
+        "message": {
+          "role": "assistant",
+          "content": "Red"
+        },
+        "done": true,
+        "done_reason": "stop",
+        "total_duration": 44430052546,
+        "load_duration": 6492134740,
+        "prompt_eval_count": 289,
+        "prompt_eval_duration": 37789804000,
+        "eval_count": 2,
+        "eval_duration": 111482000
+      },
+      "seconds": 44.44
+    }
+  ]
+}

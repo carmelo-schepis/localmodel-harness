@@ -1,0 +1,24 @@
+services:
+  searxng:
+    image: searxng/searxng:2026.11.2-cccbc9e15
+    restart: unless-stopped
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?run ./scripts/start.sh once to create it}
+    volumes:
+      - ./config/searxng/settings.yml:/etc/searxng/settings.yml:ro
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      searxng:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATA_DIR: /app/data
+    ports:
+      - "${APP_BIND_IP:-127.0.0.1}:3000:3000"
+    volumes:
+      - app-data:/app/data
+volumes:
+  app-data:
