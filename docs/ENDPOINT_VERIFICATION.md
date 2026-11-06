@@ -1,4 +1,4 @@
-# Ollama endpoint verification
+# Hugo endpoint verification
 
 Date: 6 November 2026. Requests originated from the planning environment on the host, not a future application container. The machine clock reported UTC; the user's timezone is Australia/Sydney.
 
@@ -9,7 +9,7 @@ No authentication was needed for these requests. No models were downloaded, dele
 ## Observed results
 
 - `GET /v1/models`: HTTP 200, eight installed models.
-- `GET /api/version`: HTTP 200, Ollama `0.33.0`.
+- `GET /api/version`: HTTP 200, Hugo `0.33.0`.
 - `POST /api/show`: capability discovery succeeded for all eight models.
 - `POST /v1/chat/completions`, `gemma3:1b`: HTTP 200, returned `connection successful`, 18.97 seconds.
 - `POST /api/chat`, `qwen3:1.7b`: a bounded retry returned a structured `echo_probe` call with argument `value: harness-ok`, 8.37 seconds.
@@ -43,4 +43,4 @@ curl --noproxy '*' --connect-timeout 5 --max-time 120 \
 
 ## Verification boundaries
 
-These probes establish that this host can reach Ollama and use text, a simple vision task, structured tool calls/results, and embeddings. They do not establish research quality, reliable OCR, essay quality, arbitrary model capabilities, streaming/cancellation, MCP connectivity, SearXNG operation, browser behaviour, deployment-container reachability, or two-real-server routing. No application exists yet; the implementation prompt specifies how those workflows must be built and tested.
+These probes establish that this host can reach Hugo and use text, a simple vision task, structured tool calls/results, and embeddings. They do not establish research quality, reliable OCR, essay quality, arbitrary model capabilities, streaming/cancellation, MCP connectivity, SearXNG operation, browser behaviour, deployment-container reachability, or two-real-server routing. No application exists yet; the implementation prompt specifies how those workflows must be built and tested.

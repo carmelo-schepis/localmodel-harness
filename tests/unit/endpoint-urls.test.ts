@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { endpointBases } from '../../src/server/ollama/urls';
 
-describe('Ollama endpoint URL handling', () => {
+describe('Hugo endpoint URL handling', () => {
   it('accepts an origin with an optional trailing slash', () => {
     expect(endpointBases('http://localhost:11434/')).toEqual({
       native: 'http://localhost:11434',

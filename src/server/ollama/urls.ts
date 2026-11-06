@@ -3,7 +3,7 @@ export function endpointBases(input: string) {
   try {
     url = new URL(input.trim());
   } catch {
-    throw new Error('Enter a valid Ollama URL, such as http://localhost:11434/v1');
+    throw new Error('Enter a valid Hugo URL, such as http://localhost:11434/v1');
   }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
     throw new Error('Use an HTTP(S) endpoint without credentials, query, or fragment.');

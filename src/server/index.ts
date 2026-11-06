@@ -24,7 +24,7 @@ await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 8 }
 await app.register(fastifyStatic, { root: join(process.cwd(), 'dist'), prefix: '/' });
 const timestamp = () => new Date().toISOString();
 const readJson = async (res: Response) => {
-  if (!res.ok) throw new Error(`Ollama returned ${res.status}: ${(await res.text()).slice(0, 500)}`);
+  if (!res.ok) throw new Error(`Hugo returned ${res.status}: ${(await res.text()).slice(0, 500)}`);
   return res.json();
 };
 app.get('/api/health', async () => ({ ok: true }));
@@ -36,7 +36,7 @@ app.get('/api/endpoints/:id/models', async (req, reply) => {
 });
 app.post('/api/endpoints', async (req, reply) => {
   const body = req.body as { url?: string; name?: string };
-  if (!body?.url?.trim()) return reply.code(400).send({ error: 'Enter an Ollama endpoint URL.' });
+  if (!body?.url?.trim()) return reply.code(400).send({ error: 'Enter a Hugo endpoint URL.' });
   try {
     const bases = endpointBases(body.url);
     const models = await readJson(await fetch(`${bases.native}/api/tags`, { signal: AbortSignal.timeout(10000) })) as { models: Array<{ name: string; digest: string }> };
@@ -66,7 +66,7 @@ app.post('/api/chat', async (req, reply) => {
   const abort = new AbortController();
   req.raw.once('aborted', () => abort.abort());
   const upstream = await fetch(`${bases.native}/api/chat`, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model,messages,stream:true,think:false,...(toolDefinitions.length?{tools:toolDefinitions}:{}),options:{num_ctx:8192}}),signal:abort.signal});
-  if (!upstream.ok || !upstream.body) return reply.code(502).send({error:'Ollama could not start this request.'});
+  if (!upstream.ok || !upstream.body) return reply.code(502).send({error:'Hugo could not start this request.'});
   const id=randomUUID(), created=timestamp();
   db.prepare('INSERT INTO messages VALUES (?,?,?,?,?,?)').run(randomUUID(),project,'user',prompt,model,created);
   reply.hijack();
@@ -77,7 +77,7 @@ app.post('/api/chat', async (req, reply) => {
     const seenCalls=new Set<string>();
     for(let step=0;step<=3;step++){
       const response=step===0?upstream:await fetch(`${bases.native}/api/chat`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model,messages,stream:true,think:false,...(toolDefinitions.length?{tools:toolDefinitions}:{}),options:{num_ctx:8192}}),signal:abort.signal});
-      if(!response.ok||!response.body)throw new Error(`Ollama returned HTTP ${response.status}.`);
+      if(!response.ok||!response.body)throw new Error(`Hugo returned HTTP ${response.status}.`);
       const reader=response.body.getReader(),decoder=new TextDecoder();let buffered='';const calls:Array<{id?:string;function?:{name?:string;arguments?:unknown}}>=[];
       const consume=(raw:string)=>{for(const line of raw.split('\n')){if(!line.trim())continue;let item:{message?:{content?:string;tool_calls?:Array<{id?:string;function?:{name?:string;arguments?:unknown}}>};done?:boolean};try{item=JSON.parse(line)}catch{continue}if(item.message?.content){complete+=item.message.content;emit({delta:item.message.content});}if(item.message?.tool_calls?.length)calls.push(...item.message.tool_calls);}}
       while(true){const {value,done}=await reader.read();if(done)break;buffered+=decoder.decode(value,{stream:true});const lines=buffered.split('\n');buffered=lines.pop()??'';consume(lines.join('\n'));}

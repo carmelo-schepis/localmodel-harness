@@ -1,6 +1,6 @@
-# Implementation prompt: Ollama Research Harness
+# Implementation prompt: Hugo Research Harness
 
-Build a local-first, single-user research application in this repository. Make Ollama models useful for web research, image and document understanding, data sorting, essay writing, and evidence-based troubleshooting. Deliver working workflows, not demonstration screens.
+Build a local-first, single-user research application in this repository. Make Hugo models useful for web research, image and document understanding, data sorting, essay writing, and evidence-based troubleshooting. Deliver working workflows, not demonstration screens.
 
 ## 1. Confirmed context and assumptions
 
@@ -9,7 +9,7 @@ Read `DESIGN.md`, `docs/endpoint-check.json`, and any repository instructions be
 Confirmed during planning on 6 November 2026:
 - Before planning, this repository contained only `LICENSE` and an initial Git commit. There is no existing application, framework, API, database, or component system to extend.
 - The attached design has been copied unchanged to `DESIGN.md`.
-- `http://100.126.194.51:11434/v1/models` returned HTTP 200 and eight installed models. Native version discovery returned Ollama `0.33.0`.
+- `http://100.126.194.51:11434/v1/models` returned HTTP 200 and eight installed models. Native version discovery returned Hugo `0.33.0`.
 - A real `/v1/chat/completions` request using `gemma3:1b` returned “connection successful”; that small request took about 19 seconds including any loading.
 - A bounded retry using `qwen3:1.7b` produced a valid structured `echo_probe` tool call in 8.37 seconds and accepted the matching tool result in a follow-up request. This verifies model tool-call/result handling, not an implemented MCP integration.
 - `embeddinggemma:latest` produced one 768-dimensional embedding in 2.92 seconds.
@@ -20,15 +20,15 @@ Confirmed during planning on 6 November 2026:
 
 Confirmed diagnosis scope: technical problems, logs, and data quality, as selected by the user.
 
-Assumptions: ship a locally hosted browser application first, without accounts or cloud dependencies for inference. Docker/Podman installation and network access are deployment prerequisites; once installed, entering an Ollama URL is the only required application configuration.
+Assumptions: ship a locally hosted browser application first, without accounts or cloud dependencies for inference. Docker/Podman installation and network access are deployment prerequisites; once installed, entering a Hugo URL is the only required application configuration.
 
-Do not install or change Ollama, pull/delete models, alter its configuration, or modify other projects.
+Do not install or change Hugo, pull/delete models, alter its configuration, or modify other projects.
 
 ## 2. Product goal and expected behaviour
 
 The first-run screen asks for one endpoint URL. The user pastes the supplied URL, presses Connect, sees discovered models and usable capability badges, and can start work without entering model names, API keys, or MCP JSON.
 
-Settings supports multiple independently named Ollama servers. The model picker shows both model and server. The user can keep automatic task routing or pin a model and endpoint.
+Settings supports multiple independently named Hugo servers. The model picker shows both model and server. The user can keep automatic task routing or pin a model and endpoint.
 
 Organise work into persistent projects containing conversations, sources, uploaded documents, datasets, drafts, and diagnostic cases. Provide four workspaces: Research, Data, Writing, and Diagnose. They share the project's evidence library and conversation history.
 
@@ -45,9 +45,9 @@ Choose mutually compatible stable versions, a supported Node LTS, and a lockfile
 
 Use the official MCP TypeScript SDK. At planning time the official documentation identifies v2, with separate client/server packages, as the stable line. Check its current imports and interoperability guidance instead of copying outdated v1 snippets. Support both stdio and Streamable HTTP using the SDK, including compatible older servers.
 
-Keep modules for UI, Ollama access, model routing, task execution, MCP, ingestion, retrieval, and persistence. Avoid a large agent framework, Redis, Kubernetes, or a separate vector database for this first release. Begin with bounded project-scoped cosine search alongside FTS5; measure its ceiling before introducing another storage service.
+Keep modules for UI, Hugo access, model routing, task execution, MCP, ingestion, retrieval, and persistence. Avoid a large agent framework, Redis, Kubernetes, or a separate vector database for this first release. Begin with bounded project-scoped cosine search alongside FTS5; measure its ceiling before introducing another storage service.
 
-Use server-side HTTP requests rather than browser-to-Ollama calls. This avoids mixed-content/CORS requirements and keeps MCP processes and secrets off the client. Never ask the user to make Ollama publicly accessible or change OLLAMA_ORIGINS.
+Use server-side HTTP requests rather than browser-to-Hugo calls. This avoids mixed-content/CORS requirements and keeps MCP processes and secrets off the client. Never ask the user to make Hugo publicly accessible or change OLLAMA_ORIGINS.
 
 Provide a turnkey Compose deployment containing the application and a private SearXNG service. Enable SearXNG JSON output explicitly, pin its image, create required secrets automatically, persist application data, and expose only the application port on host loopback. Bind the server to the container interface internally while publishing only `127.0.0.1` on the host. A development start command may reuse this same search service.
 
@@ -72,13 +72,13 @@ These are new paths proposed for an inspected, otherwise empty repository; adapt
 
 Preserve `LICENSE`, `DESIGN.md`, and planning evidence. Ignore generated databases, uploads, secrets, build files, and local logs in Git.
 
-## 5. Ollama connections and model routing
+## 5. Hugo connections and model routing
 
 Implement this before higher-level workflows:
 
 1. Accept an origin or an OpenAI-style base ending in `/v1`, with optional trailing slash. Validate HTTP(S), reject embedded credentials/query/fragment ambiguity, preserve meaningful reverse-proxy prefixes, and never produce `/v1/v1` or `/v1/api/chat`.
 2. Keep native and compatibility bases separate. For the supplied URL they are `http://100.126.194.51:11434` and `http://100.126.194.51:11434/v1`.
-3. Discover native version, installed models, per-model capabilities, and running models using Ollama's documented endpoints. Use native chat and embeddings for Ollama-specific features; verify OpenAI-compatible model discovery and text chat as supported compatibility paths.
+3. Discover native version, installed models, per-model capabilities, and running models using Hugo's documented endpoints. Use native chat and embeddings for Hugo-specific features; verify OpenAI-compatible model discovery and text chat as supported compatibility paths.
 4. If native metadata is unavailable but `/v1` works, retain basic chat in a clearly labelled compatibility mode. Unknown capabilities must remain unknown. Advanced base-path overrides belong in Settings, not first-run setup.
 5. Key model identity by endpoint ID plus model name; retain digests and capability provenance. Refresh metadata in the background with timeouts and bounded concurrency.
 6. Select routes from discovered capabilities and observed health. Prefer a small responsive model for fast tasks, a suitable tool model for research, a vision model for images, and an embedding model for retrieval. Offer quality/latency preferences rather than assuming the biggest model is best.
@@ -107,7 +107,7 @@ The coordinator must perform the real model → validated tool call → MCP exec
 - Treat custom local MCP executables as trusted code: application tool policies do not sandbox a subprocess. Do not automatically install or launch arbitrary discovered packages.
 - Permit approved research reads under a project-level policy. Require approval for external writes or broader file access from custom tools. Do not trust a server's read-only annotation as the only permission boundary.
 - Treat web pages, documents, and tool results as untrusted evidence, not application instructions. Sanitise rendered HTML/Markdown.
-- Public-page fetching must block loopback/private/link-local/metadata and tailnet addresses, including IPv6, DNS changes, and redirects. Explicitly configured Ollama/MCP addresses use a separate allowlisted connection policy, so the supplied tailnet server remains reachable.
+- Public-page fetching must block loopback/private/link-local/metadata and tailnet addresses, including IPv6, DNS changes, and redirects. Explicitly configured Hugo/MCP addresses use a separate allowlisted connection policy, so the supplied tailnet server remains reachable.
 
 Research mode should produce a short research plan, retrieve several relevant sources, deduplicate them, inspect full accessible content, and assemble a cited synthesis. Support follow-up investigation, source pinning/exclusion, date/domain filters, and comparison of contradictory claims.
 
@@ -125,7 +125,7 @@ Cover screenshots, charts, diagrams, document photos, and image comparisons. Do 
 
 Chunk by document structure, keep chunks inside the embedding model's limits, and index asynchronously. Store embedding model identity/digest, dimensions, and chunking version. Use the same compatible embedding space for indexing and querying; reindex explicitly when it changes. Continue with FTS5 when embeddings are unavailable.
 
-Scope retrieval to the current project by default. Do not put entire large files into a prompt or leak another project's sources. Make Online/Offline mode prominent; offline mode disables internet tools while retaining configured Ollama inference.
+Scope retrieval to the current project by default. Do not put entire large files into a prompt or leak another project's sources. Make Online/Offline mode prominent; offline mode disables internet tools while retaining configured Hugo inference.
 
 ## 8. Research, data, writing, and diagnosis workflows
 
@@ -180,7 +180,7 @@ Every asynchronous area needs idle/loading/empty/success/error/cancelled states.
 
 ## 10. Persistence, API boundaries, and operational behaviour
 
-There is no existing API/database to preserve. New internal application routes are necessary for this greenfield request; keep them small and validated. Do not modify upstream Ollama or MCP contracts, authentication behaviour, credentials, or model definitions.
+There is no existing API/database to preserve. New internal application routes are necessary for this greenfield request; keep them small and validated. Do not modify upstream Hugo or MCP contracts, authentication behaviour, credentials, or model definitions.
 
 Store endpoints, model cache, projects, conversations/messages, runs/events, source versions/chunks, embeddings, attachment references, datasets/transformations, document versions, diagnostic cases, and MCP settings. Define stable IDs, timestamps, defaults, foreign keys, and additive versioned migrations.
 
@@ -208,7 +208,7 @@ Do not mark later required milestones complete because the chat shell works. Fin
 
 Use unit/integration tests for URL normalisation, endpoint-scoped model identity, capability routing, fragmented NDJSON/SSE streams, tool-loop replay and limits, cancellation, reconnect deduplication, source/citation resolution, project isolation, embedding incompatibility, deterministic data transforms, draft conflicts, and migrations.
 
-Use controlled independent mock Ollama servers and real SDK-based fixture MCP servers in normal CI. Cover one endpoint offline, duplicate model names across endpoints, malformed tool arguments, MCP disconnect/error, no vision/tool model, embedding failure, cold loads, partial output, malicious source instructions, blocked fetch redirects, and oversized files.
+Use controlled independent mock Hugo servers and real SDK-based fixture MCP servers in normal CI. Cover one endpoint offline, duplicate model names across endpoints, malformed tool arguments, MCP disconnect/error, no vision/tool model, embedding failure, cold loads, partial output, malicious source instructions, blocked fetch redirects, and oversized files.
 
 Use Playwright for actual workflows:
 1. Start with fresh local data, open onboarding, paste an endpoint, connect, and verify discovered model choices. Refresh and confirm persistence.
@@ -229,7 +229,7 @@ Regression checks must rerun onboarding, plain chat, model/endpoint switching, s
 ## 13. Acceptance criteria and completion
 
 The required release is complete only when:
-- A clean installation requires only an Ollama endpoint in the app, discovers models automatically, and supports multiple saved endpoints.
+- A clean installation requires only a Hugo endpoint in the app, discovers models automatically, and supports multiple saved endpoints.
 - Chat, vision, actual MCP tool execution, cited web/document research, data transformations, essay revision, and diagnostic cases each work end to end.
 - The default web-search path requires no paid API key or manual MCP setup; failure never masquerades as successful browsing.
 - Model routes respect capabilities; disconnected/missing/slow models yield useful states rather than fabricated success.
@@ -248,11 +248,11 @@ Prioritise saved workflow templates, side-by-side model evaluation, branchable c
 
 ## Primary references checked during planning
 
-- [Ollama OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility)
-- [Ollama model metadata](https://docs.ollama.com/api-reference/show-model-details)
-- [Ollama tool calling](https://docs.ollama.com/capabilities/tool-calling)
-- [Ollama vision](https://docs.ollama.com/capabilities/vision)
-- [Ollama embeddings](https://docs.ollama.com/capabilities/embeddings)
+- [Hugo OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility)
+- [Hugo model metadata](https://docs.ollama.com/api-reference/show-model-details)
+- [Hugo tool calling](https://docs.ollama.com/capabilities/tool-calling)
+- [Hugo vision](https://docs.ollama.com/capabilities/vision)
+- [Hugo embeddings](https://docs.ollama.com/capabilities/embeddings)
 - [MCP TypeScript SDK v2](https://ts.sdk.modelcontextprotocol.io/v2/)
 - [MCP transports](https://modelcontextprotocol.io/specification/latest/basic/transports)
 - [SearXNG container deployment](https://docs.searxng.org/admin/installation-docker.html)
