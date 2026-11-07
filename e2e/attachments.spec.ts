@@ -71,6 +71,25 @@ test('empty project welcomes, image drop selects vision, and chat sends the imag
   await expect(page.getByRole('heading', { name: /What are you looking into\?/ })).toBeVisible();
 });
 
+test('chat deletion requires confirmation and replaces the active last chat', async ({ page }) => {
+  await mockApp(page);
+  let deleted = false;
+  await page.route('**/api/projects/p1', async route => {
+    if (route.request().method() === 'DELETE') { deleted = true; return route.fulfill({ status: 204, body: '' }); }
+    return route.continue();
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Delete chat: Research' }).click();
+  await expect(page.getByRole('dialog', { name: 'Delete “Research”?' })).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  expect(deleted).toBe(false);
+  await page.getByRole('button', { name: 'Delete chat: Research' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete chat' }).click();
+  await expect.poll(() => deleted).toBe(true);
+  await expect(page.getByRole('button', { name: 'Delete chat: Research' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: /What are you looking into\?/ })).toBeVisible();
+});
+
 test('document picker stages extracted PDF and TXT text for chat', async ({ page }) => {
   const app = await mockApp(page);
   await page.goto('/');
@@ -688,10 +707,10 @@ test('text-only interrupted retry after reload removes the persisted turn from m
   await page.goto('/');
   const chats = page.getByRole('list', { name: 'Chats' });
   await expect(chats.locator('button').first()).toBeVisible();
-  const initialChatCount = await chats.locator('button').count();
+  const initialChatCount = await chats.locator('.chat-row').count();
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
-  await expect(chats.locator('button')).toHaveCount(initialChatCount + 1);
-  const targetChatName = await chats.locator('button').last().innerText();
+  await expect(chats.locator('.chat-row')).toHaveCount(initialChatCount + 1);
+  const targetChatName = await chats.locator('.chat-row').last().innerText();
   const projectsByPrompt = new Map<string, string>();
   page.on('request', outgoing => { if (outgoing.url().endsWith('/api/chat') && outgoing.method() === 'POST') { const body = outgoing.postDataJSON() as {project:string;prompt:string};projectsByPrompt.set(body.prompt,body.project); } });
   const prompt = page.getByRole('textbox', { name: 'Message' });
@@ -699,9 +718,9 @@ test('text-only interrupted retry after reload removes the persisted turn from m
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByRole('alert')).toContainText('Hugo stream ended before the response completed.');
   const targetProject = projectsByPrompt.get('Retry this text-only turn.')!;
-  const beforeOtherChat = await chats.locator('button').count();
+  const beforeOtherChat = await chats.locator('.chat-row').count();
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
-  await expect(chats.locator('button')).toHaveCount(beforeOtherChat + 1);
+  await expect(chats.locator('.chat-row')).toHaveCount(beforeOtherChat + 1);
   await prompt.fill('Fail a turn in another chat.');
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByRole('alert')).toContainText('Hugo stream ended before the response completed.');
