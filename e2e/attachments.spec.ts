@@ -14,6 +14,7 @@ async function mockApp(page: Page, vision = true, initialMessages: Array<{ role:
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url());
     const method = route.request().method();
+    if (url.pathname === '/api/auth/status') return route.fulfill({ json: { required: false, authenticated: true } });
     if (url.pathname === '/api/endpoints' && method === 'GET') return route.fulfill({ json: [{ id: 'ep1', name: 'Hugo test', url: 'http://hugo.test/v1' }] });
     if (url.pathname === '/api/projects' && method === 'GET') return route.fulfill({ json: [{ id: 'p1', name: 'Research' }] });
     if (url.pathname === '/api/projects' && method === 'POST') return route.fulfill({ json: { id: 'p2', name: 'Project 2' } });
@@ -71,9 +72,30 @@ test('empty project welcomes, image drop selects vision, and chat sends the imag
   await expect(page.getByRole('heading', { name: /What are you looking into\?/ })).toBeVisible();
 });
 
+test('chat deletion requires confirmation and replaces the active last chat', async ({ page }) => {
+  await mockApp(page);
+  let deleted = false;
+  await page.route('**/api/projects/p1', async route => {
+    if (route.request().method() === 'DELETE') { deleted = true; return route.fulfill({ status: 204, body: '' }); }
+    return route.continue();
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Delete chat: Research' }).click();
+  await expect(page.getByRole('dialog', { name: 'Delete “Research”?' })).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  expect(deleted).toBe(false);
+  await page.getByRole('button', { name: 'Delete chat: Research' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete chat' }).click();
+  await expect.poll(() => deleted).toBe(true);
+  await expect(page.getByRole('button', { name: 'Delete chat: Research' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: /What are you looking into\?/ })).toBeVisible();
+});
+
 test('document picker stages extracted PDF and TXT text for chat', async ({ page }) => {
   const app = await mockApp(page);
   await page.goto('/');
+  await expect(page.getByRole('heading', { name: /What are you looking into\?/ })).toBeVisible();
+  await expect(page.getByText('Loading chat…')).toHaveCount(0);
   const picker = page.locator('input[type=file]').first();
   await expect(picker).toHaveAttribute('multiple', '');
   await picker.setInputFiles([
@@ -83,6 +105,7 @@ test('document picker stages extracted PDF and TXT text for chat', async ({ page
   await expect(page.getByText('notes.txt', { exact: false }).first()).toBeVisible();
   await expect(page.getByText('source.pdf', { exact: false }).first()).toBeVisible();
   await page.getByRole('textbox', { name: 'Message' }).fill('Summarize sources.');
+  await expect(page.getByRole('button', { name: 'Send message' })).toBeEnabled();
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect.poll(() => app.getSent()?.prompt).toContain('TXT distinctive: saffron lantern.');
   expect(app.getSent()?.prompt).toContain('PDF distinctive: cobalt river.');
@@ -121,9 +144,10 @@ test('long Markdown stays in the transcript scroll region on desktop and phone',
 test('site text and composer placeholder render white', async ({ page }) => {
   await mockApp(page);
   await page.goto('/');
+  await expect(page.getByRole('heading', { name: /What are you looking into\?/ })).toBeVisible();
   const colors = await page.locator('body *').evaluateAll(elements => elements
     .filter(element => element.children.length === 0 && element.textContent?.trim())
-    .map(element => getComputedStyle(element).color));
+    .map(element => getComputedStyle(element).color).filter(Boolean));
   expect([...new Set(colors)]).toEqual(['rgb(255, 255, 255)']);
   const placeholderColor = await page.getByRole('textbox', { name: 'Message' }).evaluate(element => getComputedStyle(element, '::placeholder').color);
   expect(placeholderColor).toBe('rgb(255, 255, 255)');
@@ -148,6 +172,7 @@ test('no vision model opens the requested dialog and cancel retains the staged i
   const app = await mockApp(page, false);
   await page.goto('/');
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
+  await expect(page.getByRole('heading', { name: /What are you looking into\?/ })).toBeVisible();
   await page.locator('input[type=file]').nth(1).setInputFiles({ name: 'sample.png', mimeType: 'image/png', buffer: imageFixture });
   await expect(page.getByRole('dialog')).toContainText('Do you want to install a vision model or to unlock vision capabilities?');
   await page.keyboard.press('Escape');
@@ -157,7 +182,7 @@ test('no vision model opens the requested dialog and cancel retains the staged i
     transfer.items.add(new File(['second'], 'replacement.png', { type: 'image/png' }));
     element.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: transfer }));
   });
-  await expect(page.getByText(/existing image was kept/)).toBeVisible();
+  await expect(page.locator('.error[role="alert"]')).toContainText('existing image was kept');
   await expect(page.getByRole('button', { name: 'Remove image sample.png' })).toBeVisible();
   app.setDiscoveryFailure(true);
   await page.getByRole('button', { name: 'Remove image sample.png' }).click();
@@ -174,6 +199,8 @@ test('no vision model opens the requested dialog and cancel retains the staged i
 test('mixed and oversized attachments report file-specific errors without replacing a staged image', async ({ page }) => {
   await mockApp(page);
   await page.goto('/');
+  await expect(page.getByRole('heading', { name: /What are you looking into\?/ })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Composer model' })).toHaveValue('text-model');
   await page.locator('.work').evaluate((element, files) => {
     const transfer = new DataTransfer();
     for (const [name, data] of files) transfer.items.add(new File([data], name, { type: 'image/png' }));
@@ -191,7 +218,7 @@ test('mixed and oversized attachments report file-specific errors without replac
   await expect(page.getByRole('alert')).toContainText('archive.zip: unsupported file type.');
   await expect(page.getByRole('button', { name: 'Remove image first.png' })).toBeVisible();
   await page.locator('input[type=file]').first().setInputFiles({ name: 'huge.txt', mimeType: 'text/plain', buffer: Buffer.alloc(10 * 1024 * 1024 + 1) });
-  await expect(page.getByRole('alert')).toContainText('huge.txt: exceeds the 10 MiB upload limit.');
+  await expect(page.getByRole('alert')).toContainText("huge.txt: exceeds this deployment's 10 MiB upload limit.");
 });
 
 
@@ -214,6 +241,14 @@ test('real application forwards picker and dropped image bytes, restores image c
   await page.getByRole('textbox', { name: 'Message' }).fill('Describe the visible colors and shape.');
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByText(/red left half, a blue right half, and a yellow circle/).last()).toBeVisible();
+  const reasoning = page.locator('.model-reasoning').last();
+  await expect(reasoning).toBeVisible();
+  await expect(reasoning).not.toHaveAttribute('open', '');
+  await reasoning.locator('summary').focus();
+  await page.keyboard.press('Enter');
+  await expect(reasoning).toContainText('I will inspect the visual evidence before answering.');
+  await expect(page.locator('.message').last().locator('.message-content > .markdown-body')).not.toContainText('I will inspect the visual evidence before answering.');
+  await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();
   const attachment = page.locator('.message-attachment').filter({ hasText: 'vision-shapes.png' });
   await expect(attachment).toBeVisible();
   await expect(attachment).toContainText('B');
@@ -229,9 +264,12 @@ test('real application forwards picker and dropped image bytes, restores image c
   expect(Buffer.from(userTurn?.images?.[0] ?? '', 'base64').equals(imageFixture)).toBe(true);
   await expect(page.getByRole('button', { name: 'Reuse image' }).first()).toBeVisible();
   await page.reload();
+  await expect(page.locator('.model-reasoning')).toHaveCount(0);
   await expect(page.locator('.message-attachment').filter({ hasText: 'vision-shapes.png' })).toBeVisible();
   const originalTurnId = await page.locator('.message').first().getAttribute('data-message-id');
   await page.locator('.message').first().getByRole('button', { name: 'Reuse image' }).click();
+  await expect(page.getByRole('button', { name: 'Remove image vision-shapes.png' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Message' })).toHaveValue(`Please refer to the image from earlier turn ${originalTurnId}.`);
   await page.getByRole('textbox', { name: 'Message' }).fill('Compare this with the earlier image.');
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByText(/red left half, a blue right half, and a yellow circle/).last()).toBeVisible();
@@ -288,19 +326,27 @@ test('completed identical image prompts keep separate image identities after rel
   expect(endpoint.ok()).toBeTruthy();
   await page.goto('/');
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
+  await expect(page.getByText('Loading chat…')).toHaveCount(0);
   await page.evaluate(() => { Date.prototype.toISOString = () => '2000-01-01T00:00:00.000Z'; });
   const sendImagePrompt = async (bytes: Buffer) => {
     await page.locator('input[accept="image/png,image/jpeg,image/webp"]').setInputFiles({ name: 'same-name.png', mimeType: 'image/png', buffer: bytes });
+    await expect(page.getByRole('button', { name: 'Remove image same-name.png' })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Composer model' })).toHaveValue('gemma3:4b');
     await page.getByRole('textbox', { name: 'Message' }).fill('Describe this exact picture.');
     await page.getByRole('button', { name: 'Send message' }).click();
     await expect(page.getByText(/red left half, a blue right half, and a yellow circle/).last()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();
   };
   await sendImagePrompt(imageFixture);
   await expect(page.locator('.message-attachment img')).toHaveCount(1);
   await page.reload();
+  await expect(page.getByText('Loading chat…')).toHaveCount(0);
   await expect(page.locator('.message-attachment img')).toHaveCount(1);
   await sendImagePrompt(blueFixture);
   await page.reload();
+  await expect(page.getByText('Loading chat…')).toHaveCount(0);
+  await expect(page.locator('.message-attachment img')).toHaveCount(2);
+  await expect(page.locator('.message')).toHaveCount(4);
   await sendImagePrompt(imageFixture);
   const attachments = page.locator('.message-attachment');
   await expect(attachments).toHaveCount(3);
@@ -331,7 +377,7 @@ test('stop during slow model startup preserves the message and staged image', as
   const prompt = page.getByRole('textbox', { name: 'Message' });
   await prompt.fill('Keep this draft if stopped.');
   await page.getByRole('button', { name: 'Send message' }).click();
-  await expect(page.getByText('Waiting for the model…')).toBeVisible();
+  await expect(page.locator('.progress-line').getByText('Connecting to the model server')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Stop generation' })).toBeVisible();
   await expect(prompt).toHaveValue('Keep this draft if stopped.');
   await page.getByRole('button', { name: 'Stop generation' }).click();
@@ -348,9 +394,12 @@ test('Stop during image persistence cancels before sending and keeps the staged 
   expect(endpoint.ok()).toBeTruthy();
   await page.goto('/');
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
+  await expect(page.getByText('Loading chat…')).toHaveCount(0);
   await page.locator('input[accept="image/png,image/jpeg,image/webp"]').setInputFiles({ name: 'preparing.png', mimeType: 'image/png', buffer: imageFixture });
+  await expect(page.getByRole('button', { name: 'Remove image preparing.png' })).toBeVisible();
   const prompt = page.getByRole('textbox', { name: 'Message' });
   await prompt.fill('Keep this image if stopped during preparation.');
+  await expect(page.getByRole('button', { name: 'Send message' })).toBeEnabled();
   await page.evaluate(() => {
     const scope = window as typeof window & {holdAttachmentSave?: boolean; releaseAttachmentSave?: boolean};
     const originalPut = IDBObjectStore.prototype.put;
@@ -373,7 +422,7 @@ test('Stop during image persistence cancels before sending and keeps the staged 
   });
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByRole('button', { name: 'Stop generation' })).toBeVisible();
-  await expect(page.getByText('Preparing request…')).toBeVisible();
+  await expect(page.locator('.progress-line').getByText('Preparing your request')).toBeVisible();
   await expect.poll(async () => (await (await request.get(`${mockHugo}/__test/count`)).json() as {count:number}).count).toBe(0);
   await page.getByRole('button', { name: 'Stop generation' }).click();
   await page.evaluate(() => { (window as typeof window & {releaseAttachmentSave?:boolean}).releaseAttachmentSave = true; });
@@ -394,7 +443,7 @@ test('an image completes into its original chat after navigating away during sta
   await page.locator('input[type=file]').nth(1).setInputFiles({ name: 'navigate.png', mimeType: 'image/png', buffer: imageFixture });
   await page.getByRole('textbox', { name: 'Message' }).fill('Keep this image with its original chat.');
   await page.getByRole('button', { name: 'Send message' }).click();
-  await expect(page.getByText('Waiting for the model…')).toBeVisible();
+  await expect(page.locator('.progress-line').getByText('Connecting to the model server')).toBeVisible();
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Message' })).toHaveValue('');
   await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();
@@ -448,7 +497,8 @@ test('retry pixel comparison cannot add an old message to a chat opened while it
   expect(endpoint.ok()).toBeTruthy();
   await page.goto('/');
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
-  const originalChatName = await page.locator('.chat-row.active').innerText();
+  await expect(page.locator('.chat-row.active')).toContainText(/^Chat /);
+  const originalChatId = await page.locator('.chat-item.active').getAttribute('data-project-id');
   let projectId = '';
   page.on('request', outgoing => { if (outgoing.url().endsWith('/api/chat') && outgoing.method() === 'POST') projectId = String((outgoing.postDataJSON() as {project:string}).project); });
   await page.locator('input[accept="image/png,image/jpeg,image/webp"]').setInputFiles({ name: 'wait-retry.png', mimeType: 'image/png', buffer: imageFixture });
@@ -478,7 +528,7 @@ test('retry pixel comparison cannot add an old message to a chat opened while it
   await expect(page.locator('.message')).toHaveCount(0);
   const persisted = await request.get(`${base}/api/messages/${projectId}`);
   expect((await persisted.json() as Array<{role:string}>).map(row => row.role)).toEqual(['user','assistant']);
-  await page.getByRole('list', { name: 'Chats' }).getByRole('button', { name: originalChatName, exact: true }).click();
+  await page.locator(`.chat-item[data-project-id="${originalChatId}"] .chat-row`).click();
   await expect(page.locator('.message')).toHaveCount(2);
   await expect(page.locator('.message-attachment').filter({ hasText: 'wait-retry.png' })).toContainText('Image pixels stored in this browser');
   const messages = await request.get(`${base}/api/messages/${projectId}`);
@@ -493,7 +543,9 @@ test('stopping an interrupted image retry preserves the original persisted attac
   expect(endpoint.ok()).toBeTruthy();
   await page.goto('/');
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
-  const originalChatName = await page.locator('.chat-row.active').innerText();
+  await expect(page.getByText('Loading chat…')).toHaveCount(0);
+  const originalChatId = await page.locator('.chat-item.active').getAttribute('data-project-id');
+  expect(originalChatId).toBeTruthy();
   await page.locator('input[accept="image/png,image/jpeg,image/webp"]').setInputFiles({ name: 'retry-stop.png', mimeType: 'image/png', buffer: imageFixture });
   const prompt = page.getByRole('textbox', { name: 'Message' });
   await prompt.fill('Preserve this image if its retry is stopped.');
@@ -534,12 +586,31 @@ test('stopping an interrupted image retry preserves the original persisted attac
   await expect(prompt).toHaveValue('');
   await expect(page.getByRole('button', { name: 'Remove image retry-stop.png' })).toHaveCount(0);
   await expect(page.locator('.message')).toHaveCount(0);
-  await page.getByRole('list', { name: 'Chats' }).getByRole('button', { name: originalChatName, exact: true }).click();
+  await page.locator(`.chat-item[data-project-id="${originalChatId}"] .chat-row`).click();
   await expect(prompt).toHaveValue('');
   await expect(page.locator('.message').filter({ hasText: 'Preserve this image if its retry is stopped.' })).toBeVisible();
   await expect(page.locator('.message-attachment').filter({ hasText: 'retry-stop.png' })).toContainText('Image pixels stored in this browser');
   await expect(page.getByRole('button', { name: 'Reuse image' })).toBeVisible();
   await expect.poll(async () => (await (await request.get(`${mockHugo}/__test/count`)).json() as {count:number}).count).toBe(1);
+});
+
+test('durable cancel endpoint stops model startup from a separate request', async ({ request }) => {
+  await request.get(`${mockHugo}/__test/reset`);
+  await request.post(`${mockHugo}/__test/config`, { data: { scenario: 'slow-start' } });
+  const base = String(test.info().project.use.baseURL);
+  const endpoint = `${mockHugo}/v1`;
+  const created = await request.post(`${base}/api/projects`, { data: { name: 'Durable cancellation fixture' } });
+  const project = await created.json() as {id:string};
+  const runId = crypto.randomUUID();
+  const chatPromise = request.post(`${base}/api/chat`, { data: { endpoint, model: 'gemma3:4b', project: project.id, prompt: 'Cancel this startup.', history: [], mode: 'Research', runId } }).catch(() => undefined);
+  await expect.poll(async () => ((await (await request.get(`${mockHugo}/__test/count`)).json()) as {count:number}).count).toBe(1);
+  const cancelled = await request.post(`${base}/api/runs/${runId}/cancel`);
+  expect(cancelled.ok()).toBeTruthy();
+  expect(await cancelled.json()).toEqual({ cancelled: true });
+  await expect.poll(async () => (await (await request.get(`${mockHugo}/__test/slow-start-aborted`)).json() as {aborted:boolean}).aborted).toBe(true);
+  const repeated = await request.post(`${base}/api/runs/${runId}/cancel`);
+  expect(await repeated.json()).toEqual({ cancelled: false });
+  await chatPromise;
 });
 
 test('server rejects a duplicate idempotency key while its first response is active', async ({ request }) => {
@@ -579,6 +650,7 @@ test('a lost completion event replays the persisted answer without running the m
   expect(endpoint.ok()).toBeTruthy();
   await page.goto('/');
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
+  await expect(page.getByText('Loading chat…')).toHaveCount(0);
   let projectId = '';
   let requests = 0;
   await page.route('**/api/chat', async route => {
@@ -592,6 +664,7 @@ test('a lost completion event replays the persisted answer without running the m
   });
   await page.locator('input[accept="image/png,image/jpeg,image/webp"]').setInputFiles({ name: 'ack.png', mimeType: 'image/png', buffer: imageFixture });
   await page.getByRole('textbox', { name: 'Message' }).fill('Keep the completed answer after a dropped acknowledgement.');
+  await expect(page.getByRole('button', { name: 'Send message' })).toBeEnabled();
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByRole('alert')).toContainText('The response ended before the message completed.');
   await expect(page.locator('.message').filter({ hasText: 'red left half, a blue right half, and a yellow circle' })).toBeVisible();
@@ -613,19 +686,24 @@ test('changed image after an interrupted identical prompt is stored as a new tur
   expect(endpoint.ok()).toBeTruthy();
   await page.goto('/');
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
+  await expect(page.getByText('Loading chat…')).toHaveCount(0);
   const stageAndSend = async (bytes: Buffer) => {
     await page.locator('input[accept="image/png,image/jpeg,image/webp"]').setInputFiles({ name: 'same-name.png', mimeType: 'image/png', buffer: bytes });
+    await expect(page.getByRole('button', { name: 'Remove image same-name.png' })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Composer model' })).toHaveValue('gemma3:4b');
     await page.getByRole('textbox', { name: 'Message' }).fill('Retry this image question.');
     await page.getByRole('button', { name: 'Send message' }).click();
   };
   await stageAndSend(imageFixture);
   await expect(page.getByRole('alert')).toContainText('Hugo stream ended before the response completed.');
   await page.reload();
+  await expect(page.getByText('Loading chat…')).toHaveCount(0);
   await expect(page.locator('.message-attachment img')).toHaveCount(1);
   await stageAndSend(blueFixture);
   await expect(page.getByRole('alert')).toContainText('Hugo stream ended before the response completed.');
   await request.post(`${mockHugo}/__test/config`, { data: { scenario: 'normal' } });
   await page.reload();
+  await expect(page.getByText('Loading chat…')).toHaveCount(0);
   await expect(page.locator('.message-attachment img')).toHaveCount(2);
   await stageAndSend(blueFixture);
   await expect(page.getByText(/red left half, a blue right half, and a yellow circle/).last()).toBeVisible();
@@ -688,10 +766,10 @@ test('text-only interrupted retry after reload removes the persisted turn from m
   await page.goto('/');
   const chats = page.getByRole('list', { name: 'Chats' });
   await expect(chats.locator('button').first()).toBeVisible();
-  const initialChatCount = await chats.locator('button').count();
+  const initialChatCount = await chats.locator('.chat-row').count();
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
-  await expect(chats.locator('button')).toHaveCount(initialChatCount + 1);
-  const targetChatName = await chats.locator('button').last().innerText();
+  await expect(chats.locator('.chat-row')).toHaveCount(initialChatCount + 1);
+  const targetChatName = await chats.locator('.chat-row').last().innerText();
   const projectsByPrompt = new Map<string, string>();
   page.on('request', outgoing => { if (outgoing.url().endsWith('/api/chat') && outgoing.method() === 'POST') { const body = outgoing.postDataJSON() as {project:string;prompt:string};projectsByPrompt.set(body.prompt,body.project); } });
   const prompt = page.getByRole('textbox', { name: 'Message' });
@@ -699,9 +777,9 @@ test('text-only interrupted retry after reload removes the persisted turn from m
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByRole('alert')).toContainText('Hugo stream ended before the response completed.');
   const targetProject = projectsByPrompt.get('Retry this text-only turn.')!;
-  const beforeOtherChat = await chats.locator('button').count();
+  const beforeOtherChat = await chats.locator('.chat-row').count();
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
-  await expect(chats.locator('button')).toHaveCount(beforeOtherChat + 1);
+  await expect(chats.locator('.chat-row')).toHaveCount(beforeOtherChat + 1);
   await prompt.fill('Fail a turn in another chat.');
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByRole('alert')).toContainText('Hugo stream ended before the response completed.');

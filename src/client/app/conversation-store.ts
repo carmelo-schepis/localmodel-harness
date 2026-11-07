@@ -96,3 +96,16 @@ export async function saveForkWithAttachments(snapshot: ForkSnapshot, attachment
 export async function getFork(projectId: string): Promise<ForkSnapshot | undefined> {
   return read<ForkSnapshot>(`fork:${projectId}`);
 }
+
+export async function deleteProjectLocalData(projectId: string): Promise<void> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('records', 'readwrite');
+    const store = tx.objectStore('records');
+    store.delete(`attachments:${projectId}`);
+    store.delete(`fork:${projectId}`);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+    tx.onabort = () => { db.close(); reject(tx.error ?? new Error('Could not clear this chat’s browser-local data.')); };
+  });
+}

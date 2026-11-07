@@ -16,7 +16,7 @@ export default defineConfig({
   use: { baseURL: `http://127.0.0.1:${vitePort}`, headless: true },
   webServer: [
     { command: `MOCK_HUGO_PORT=${mockHugoPort} npx tsx e2e/mock-hugo-server.ts`, url: `${process.env.TEST_MOCK_HUGO_URL}/health`, reuseExistingServer: false, timeout: 30_000 },
-    { command: `PORT=${apiPort} DATA_DIR=${dataDir} npm run dev:server`, url: `http://127.0.0.1:${apiPort}/api/health`, reuseExistingServer: false, timeout: 30_000 },
+    { command: `PORT=${apiPort} DATA_DIR=${dataDir} TITLE_MODEL_SERVER_URL=${process.env.TEST_MOCK_HUGO_URL} npm run dev:server`, url: `http://127.0.0.1:${apiPort}/api/health`, reuseExistingServer: false, timeout: 30_000 },
     { command: `API_PROXY_TARGET=http://127.0.0.1:${apiPort} npm run dev:client -- --host 127.0.0.1 --port ${vitePort} --strictPort`, url: `http://127.0.0.1:${vitePort}`, reuseExistingServer: false, timeout: 30_000 },
   ],
 });
