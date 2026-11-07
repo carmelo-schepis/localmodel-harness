@@ -40,6 +40,13 @@ export function MessageBody({ text }: { text: string }) {
   return <div className="markdown-body">{blocks}</div>;
 }
 
+export function ModelReasoning({ text }: { text: string }) {
+  return <details className="model-reasoning">
+    <summary>Model reasoning</summary>
+    <div><MessageBody text={text}/><small>Available for this session only.</small></div>
+  </details>;
+}
+
 export function MessageAttachment({ attachment, onPreview, onReuse, disableReuse = false }: { attachment: LocalAttachment; onPreview: () => void; onReuse: () => void; disableReuse?: boolean }) {
   const [url, setUrl] = useState('');
   useEffect(() => { if (!attachment.blob) { setUrl(''); return; } const next = URL.createObjectURL(attachment.blob); setUrl(next); return () => URL.revokeObjectURL(next); }, [attachment.blob]);

@@ -1,0 +1,9 @@
+{
+  "buildCommand": "npm run build",
+  "functions": {
+    "src/server.ts": {
+      "includeFiles": "dist/**",
+      "maxDuration": 300
+    }
+  }
+}

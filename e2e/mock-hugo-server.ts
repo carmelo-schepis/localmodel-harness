@@ -14,7 +14,7 @@ const server = createServer(async (req, res) => {
   if (req.url === '/__test/slow-start-aborted') { res.writeHead(200, {'content-type':'application/json'}); res.end(JSON.stringify({aborted:slowStartAborted})); return; }
   if (req.method === 'GET' && req.url === '/api/tags') { res.writeHead(200, {'content-type':'application/json'}); res.end(JSON.stringify({models:[{name:'text-only:1b',size:1000000},{name:'gemma3:4b',size:4000000}]})); return; }
   if (req.method === 'GET' && req.url === '/api/ps') { res.writeHead(200, {'content-type':'application/json'}); res.end(JSON.stringify({models:[]})); return; }
-  if (req.method === 'POST' && req.url === '/api/show') { let raw='';for await (const chunk of req)raw+=chunk;const body=JSON.parse(raw);res.writeHead(200, {'content-type':'application/json'});res.end(JSON.stringify(body.model==='gemma3:4b'?{capabilities:['completion','vision'],model_info:{'gemma.context_length':8192}}:{capabilities:['completion'],model_info:{'text.context_length':8192}}));return; }
+  if (req.method === 'POST' && req.url === '/api/show') { let raw='';for await (const chunk of req)raw+=chunk;const body=JSON.parse(raw);res.writeHead(200, {'content-type':'application/json'});res.end(JSON.stringify(body.model==='gemma3:4b'?{capabilities:['completion','vision','thinking'],model_info:{'gemma.context_length':8192}}:{capabilities:['completion','thinking'],model_info:{'text.context_length':8192}}));return; }
   if (req.method === 'POST' && req.url === '/api/chat') {
     chatRequestCount++;let raw='';for await (const chunk of req)raw+=chunk;lastRequest=JSON.parse(raw) as Record<string,unknown>;
     if (scenario === 'slow-start' || scenario === 'navigation-start') await new Promise<void>(resolve=>{const timer=setTimeout(resolve,scenario==='slow-start'?8000:750);res.once('close',()=>{if(!res.writableEnded){slowStartAborted=true;clearTimeout(timer);resolve()}})});
@@ -23,6 +23,7 @@ const server = createServer(async (req, res) => {
     if (scenario === 'reject-start') { res.writeHead(503, {'content-type':'application/json'}); res.end('{"error":"fixture rejected startup"}'); return; }
     res.writeHead(200, {'content-type':'application/x-ndjson','cache-control':'no-cache'});
     if (scenario === 'interrupt') { res.end(`${JSON.stringify({message:{content:'Partial answer only.'},done:false})}\n`); return; }
+    if((lastRequest as {think?:boolean}|undefined)?.think===true)res.write(`${JSON.stringify({message:{thinking:'I will inspect the visual evidence before answering.'},done:false})}\n`);
     const content='The image has a red left half, a blue right half, and a yellow circle in the center.';
     for (const word of content.match(/.{1,14}/g)??[]) res.write(`${JSON.stringify({message:{content:word},done:false})}\n`);
     res.end(`${JSON.stringify({message:{content:''},done:true})}\n`);return;
