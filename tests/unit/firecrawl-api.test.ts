@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Isolate the server's local SQLite file before the app module initializes its database.
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'firecrawl-api-'));
@@ -14,6 +14,12 @@ const fixtureWeb = (url: string) => new Response(JSON.stringify({
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
+
+beforeEach(() => {
+  // Route behavior must not depend on a local server-default Firecrawl key.
+  vi.stubEnv('FIRECRAWL_API_KEY', '');
 });
 
 describe('Firecrawl API routes', () => {

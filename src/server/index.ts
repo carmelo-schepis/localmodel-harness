@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { waitUntil } from '@vercel/functions';
 import { endpointBases } from './ollama/urls.js';
-import { callResearchTool, ollamaResearchTools, searchResearch, testFirecrawl } from './research-mcp.js';
+import { callResearchTool, ollamaResearchTools, searchResearch, testFirecrawl, MissingFirecrawlKeyError } from './research-mcp.js';
 import { chooseTitleModel, cleanTitle, isGenericProjectName, titleExcerpt } from './chat-titles.js';
 import * as db from './database.js';
 
@@ -77,8 +77,7 @@ app.post('/api/firecrawl/test', async (req, reply) => {
   try { return await testFirecrawl(requestFirecrawlKey(req), AbortSignal.timeout(17000)); }
   catch (error) {
     const message = error instanceof Error ? error.message : 'Firecrawl connection test failed.';
-    const status = /enter a firecrawl/i.test(message) ? 400 : 502;
-    return reply.code(status).send({ error: message });
+    return reply.code(error instanceof MissingFirecrawlKeyError ? 400 : 502).send({ error: message });
   }
 });
 app.post('/api/search', async (req, reply) => {

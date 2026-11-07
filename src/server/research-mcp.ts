@@ -20,6 +20,8 @@ function firecrawlFailure(status: number) {
   return new Error(`Firecrawl search failed (HTTP ${status}).`);
 }
 
+export class MissingFirecrawlKeyError extends Error {}
+
 async function firecrawlSearch(query: string, apiKey: string, signal?: AbortSignal, limit = 5): Promise<ResearchResult[]> {
   let response: Response;
   try {
@@ -44,7 +46,7 @@ async function firecrawlSearch(query: string, apiKey: string, signal?: AbortSign
 
 export async function testFirecrawl(apiKey: string | undefined, signal?: AbortSignal) {
   const key = apiKey?.trim() || process.env.FIRECRAWL_API_KEY?.trim();
-  if (!key) throw new Error('Enter a Firecrawl API key first.');
+  if (!key) throw new MissingFirecrawlKeyError('Enter a Firecrawl API key first.');
   const results = await firecrawlSearch('Firecrawl API connection test', key, signal, 1);
   return { connected: true, resultCount: results.length };
 }
@@ -114,7 +116,11 @@ export async function callResearchTool(call: ToolCall, signal?: AbortSignal, api
   if (name === 'search_web' && apiKey?.trim()) {
     const query = args.query;
     if (typeof query !== 'string' || query.trim().length < 2 || query.length > 300) throw new Error('Search query must contain 2 to 300 characters.');
-    return JSON.stringify({ query, results: await firecrawlSearch(query.trim(), apiKey, signal) }).slice(0, 9000);
+    const results = await firecrawlSearch(query.trim(), apiKey, signal);
+    // Trim whole results instead of slicing the serialized payload so the model always receives valid JSON.
+    let text = JSON.stringify({ query, results });
+    while (text.length > 9000 && results.length > 1) { results.pop(); text = JSON.stringify({ query, results }); }
+    return text.slice(0, 9000);
   }
   const client = await getClient();
   let timeout: ReturnType<typeof setTimeout> | undefined;

@@ -1,9 +1,14 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { callResearchTool, searchResearch, testFirecrawl } from '../../src/server/research-mcp';
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+});
+
+beforeEach(() => {
+  // Keep the no-key fallback out of the fixtures regardless of the local shell environment.
+  vi.stubEnv('FIRECRAWL_API_KEY', '');
 });
 
 describe('Firecrawl search', () => {
@@ -57,5 +62,26 @@ describe('Firecrawl search', () => {
       headers: expect.objectContaining({ authorization: 'Bearer fixture-secret' }),
     }));
     expect(output).not.toContain('fixture-secret');
+  });
+
+  it('keeps tool output valid JSON when provider results exceed the output cap', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      data: { web: Array.from({ length: 5 }, (_, i) => ({
+        title: 'T'.repeat(300),
+        url: `https://example.org/${i}/${'u'.repeat(1400)}`,
+        description: 'D'.repeat(1200),
+      })) },
+    }), { status: 200 }));
+    vi.stubGlobal('fetch', fetch);
+    const output = await callResearchTool(
+      { function: { name: 'research__search_web', arguments: { query: 'bounded overlap test' } } },
+      undefined,
+      'fixture-secret',
+    );
+    const payload = JSON.parse(output) as { query: string; results: unknown[] };
+    expect(payload.query).toBe('bounded overlap test');
+    expect(payload.results.length).toBeLessThan(5);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
