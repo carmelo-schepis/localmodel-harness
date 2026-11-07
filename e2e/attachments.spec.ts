@@ -8,6 +8,7 @@ const mockHugo = process.env.TEST_MOCK_HUGO_URL ?? 'http://127.0.0.1:15200';
 
 async function mockApp(page: Page, vision = true, initialMessages: Array<{ role: string; content: string; model?: string }> = []) {
   let sent: Record<string, unknown> | undefined;
+  let firecrawlTestKey = '', firecrawlSearchKey = '';
   let visionAvailable = vision, discoveryFails = false;
   const conversations: Record<string, Array<{ role: string; content: string; model?: string }>> = { p1: initialMessages };
   let uploaded = 0, chatCalls = 0;
@@ -15,6 +16,8 @@ async function mockApp(page: Page, vision = true, initialMessages: Array<{ role:
     const url = new URL(route.request().url());
     const method = route.request().method();
     if (url.pathname === '/api/auth/status') return route.fulfill({ json: { required: false, authenticated: true } });
+    if (url.pathname === '/api/firecrawl/test' && method === 'POST') { firecrawlTestKey = route.request().headers()['x-firecrawl-api-key'] ?? ''; return route.fulfill({ json: { connected: true, resultCount: 0 } }); }
+    if (url.pathname === '/api/search' && method === 'POST') { firecrawlSearchKey = route.request().headers()['x-firecrawl-api-key'] ?? ''; return route.fulfill({ json: { results: [] } }); }
     if (url.pathname === '/api/endpoints' && method === 'GET') return route.fulfill({ json: [{ id: 'ep1', name: 'Hugo test', url: 'http://hugo.test/v1' }] });
     if (url.pathname === '/api/projects' && method === 'GET') return route.fulfill({ json: [{ id: 'p1', name: 'Research' }] });
     if (url.pathname === '/api/projects' && method === 'POST') return route.fulfill({ json: { id: 'p2', name: 'Project 2' } });
@@ -39,8 +42,29 @@ async function mockApp(page: Page, vision = true, initialMessages: Array<{ role:
     }
     return route.fulfill({ json: [] });
   });
-  return { getSent: () => sent, getChatCount: () => chatCalls, setDiscoveryFailure: (value: boolean) => { discoveryFails = value; }, setVisionAvailable: (value: boolean) => { visionAvailable = value; } };
+  return { getSent: () => sent, getChatCount: () => chatCalls, getFirecrawlTestKey: () => firecrawlTestKey, getFirecrawlSearchKey: () => firecrawlSearchKey, setDiscoveryFailure: (value: boolean) => { discoveryFails = value; }, setVisionAvailable: (value: boolean) => { visionAvailable = value; } };
 }
+
+test('Firecrawl key is tested, used for same-origin search, and cleared on disconnect', async ({ page }) => {
+  const app = await mockApp(page);
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: /What are you looking into/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const key = page.locator('#firecrawl-key');
+  await key.fill('fixture-firecrawl-key');
+  await page.getByRole('button', { name: 'Test & connect Firecrawl' }).click();
+  await expect(page.getByText('Connected · search access verified')).toBeVisible();
+  expect(app.getFirecrawlTestKey()).toBe('fixture-firecrawl-key');
+  await page.getByRole('button', { name: 'Close settings' }).click();
+  await page.getByText('Web research').click();
+  await page.getByPlaceholder('Find papers, sources, and references…').fill('Firecrawl docs');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  expect(app.getFirecrawlSearchKey()).toBe('fixture-firecrawl-key');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Disconnect' }).click();
+  await expect(key).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Test & connect Firecrawl' })).toBeDisabled();
+});
 
 test('empty project welcomes, image drop selects vision, and chat sends the image', async ({ page }) => {
   const app = await mockApp(page);
@@ -236,6 +260,7 @@ test('real application forwards picker and dropped image bytes, restores image c
   page.on('request', outgoing => { if (outgoing.url().endsWith('/api/chat') && outgoing.method() === 'POST') { lastAppRequest = outgoing.postDataJSON() as Record<string, unknown>; parentProjectId ||= String(lastAppRequest.project ?? ''); } });
   await page.goto('/');
   await expect(page.getByLabel('Model', { exact: true })).toHaveValue('text-only:1b');
+  await expect(page.getByText('Loading chat…')).toHaveCount(0);
   await page.locator('input[type=file]').nth(1).setInputFiles({ name: 'vision-shapes.png', mimeType: 'image/png', buffer: imageFixture });
   await expect(page.getByLabel('Model', { exact: true })).toHaveValue('gemma3:4b');
   await page.getByRole('textbox', { name: 'Message' }).fill('Describe the visible colors and shape.');
