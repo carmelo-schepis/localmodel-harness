@@ -1724,6 +1724,24 @@ a {
   background: var(--line-strong);
 }
 
+.firecrawl-connect {
+  display: grid;
+  gap: var(--s2);
+  padding: var(--s3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+.firecrawl-connect > label { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 1.3px; color: var(--text-3); }
+.firecrawl-connect small { color: var(--text-2); font-size: var(--type-meta); line-height: 1.45; }
+.firecrawl-input { display:flex; align-items:center; gap:var(--s2); }
+.connect .firecrawl-input input { min-width:0; flex:1; }
+.firecrawl-input button,.firecrawl-actions > button:not(.primary) { min-height:36px; padding:0 var(--s3); border:1px solid var(--line-strong); border-radius:var(--radius); color:var(--text-2); background:var(--surface); }
+.firecrawl-actions { display:flex; flex-wrap:wrap; align-items:center; gap:var(--s2); }
+.firecrawl-error,.firecrawl-success { margin:0!important; font-size:var(--type-meta)!important; }
+.firecrawl-error { color:var(--danger,#d86b6b)!important; }
+.firecrawl-success { color:var(--success,#70ad83)!important; }
+
 .modal > h3 {
   margin: var(--s5) 0 var(--s1);
   font-family: var(--font-mono);

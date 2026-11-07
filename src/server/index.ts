@@ -6,13 +6,18 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { waitUntil } from '@vercel/functions';
 import { endpointBases } from './ollama/urls.js';
-import { callResearchTool, ollamaResearchTools } from './research-mcp.js';
+import { callResearchTool, ollamaResearchTools, searchResearch, testFirecrawl } from './research-mcp.js';
 import { chooseTitleModel, cleanTitle, isGenericProjectName, titleExcerpt } from './chat-titles.js';
 import * as db from './database.js';
 
 await db.initializeDatabase();
 
-const app = Fastify({ logger: true, bodyLimit: process.env.VERCEL ? 4 * 1024 * 1024 : 12 * 1024 * 1024 });
+const app = Fastify({
+  logger: {
+    redact: { paths: ['req.headers["x-firecrawl-api-key"]', 'req.headers.authorization', 'req.headers.cookie'], censor: '[redacted]' },
+  },
+  bodyLimit: process.env.VERCEL ? 4 * 1024 * 1024 : 12 * 1024 * 1024,
+});
 await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 8 } });
 await app.register(fastifyStatic, { root: join(process.cwd(), 'dist'), prefix: '/' });
 const timestamp = () => new Date().toISOString();
@@ -64,6 +69,24 @@ const readJson = async (res: Response) => {
   return res.json();
 };
 app.get('/api/health', async () => ({ ok: true }));
+function requestFirecrawlKey(req: { headers: Record<string, string | string[] | undefined> }) {
+  const value = req.headers['x-firecrawl-api-key'];
+  return (Array.isArray(value) ? value[0] : value)?.trim() || undefined;
+}
+app.post('/api/firecrawl/test', async (req, reply) => {
+  try { return await testFirecrawl(requestFirecrawlKey(req), AbortSignal.timeout(17000)); }
+  catch (error) {
+    const message = error instanceof Error ? error.message : 'Firecrawl connection test failed.';
+    const status = /enter a firecrawl/i.test(message) ? 400 : 502;
+    return reply.code(status).send({ error: message });
+  }
+});
+app.post('/api/search', async (req, reply) => {
+  const { q } = req.body as { q?: string };
+  if (typeof q !== 'string' || q.trim().length < 2 || q.length > 300) return reply.code(400).send({ error: 'Enter a search query between 2 and 300 characters.' });
+  try { return { results: await searchResearch(q.trim(), requestFirecrawlKey(req), AbortSignal.timeout(16000)) }; }
+  catch (error) { return reply.code(502).send({ error: error instanceof Error ? error.message : 'Search failed.' }); }
+});
 app.get('/api/endpoints', async () => process.env.VERCEL ? (configuredModelServer ? db.all('SELECT * FROM endpoints WHERE url=? ORDER BY created_at',[configuredModelServer]) : []) : db.all('SELECT * FROM endpoints ORDER BY created_at'));
 app.get('/api/endpoints/:id/models', async (req, reply) => {
   const endpoint=await db.get<{url:string}>('SELECT url FROM endpoints WHERE id=?',[(req.params as {id:string}).id]);
@@ -138,6 +161,7 @@ app.post('/api/projects/:id/title', async (req,reply)=>{const id=(req.params as 
 app.post('/api/chat', async (req, reply) => {
   const { endpoint, model, project, prompt, history = [], image, mode, toolsEnabled = false, thinkingEnabled = false, runId = randomUUID() } = req.body as {endpoint:string;model:string;project:string;prompt:string;history:Array<{role:string;content:unknown}>;image?:string;mode?:string;toolsEnabled?:boolean;thinkingEnabled?:boolean;runId?:string};
   if (!endpoint || !model || !project || !prompt?.trim()) return reply.code(400).send({error:'Choose a model, project, and message.'});
+  const firecrawlKey = requestFirecrawlKey(req);
   if(!await db.get('SELECT 1 FROM projects WHERE id=?',[project]))return reply.code(404).send({error:'Chat not found.'});
   if(process.env.VERCEL&&!configuredModelServer)return reply.code(503).send({error:'Model inference is not configured. Add an authenticated HTTPS Hugo gateway as MODEL_SERVER_URL.'});
   const bases = endpointBases(process.env.VERCEL?configuredModelServer!:endpoint);
@@ -227,7 +251,7 @@ app.post('/api/chat', async (req, reply) => {
         if(seenCalls.has(signature)){messages.push({role:'tool',tool_name:toolName,content:'This identical tool call was already run in this request. Choose a different search or answer from the existing evidence.'});continue;}
         seenCalls.add(signature);
         emit({activity:{tool:toolName,status:'running'}});
-        try{const result=await callResearchTool(call,abort.signal);messages.push({role:'tool',tool_name:toolName,content:result});emit({activity:{tool:toolName,status:'complete',result:result.slice(0,700)}});}
+        try{const result=await callResearchTool(call,abort.signal,firecrawlKey);messages.push({role:'tool',tool_name:toolName,content:result});emit({activity:{tool:toolName,status:'complete',result:result.slice(0,700)}});}
         catch(error){const message=error instanceof Error?error.message:'MCP tool failed.';messages.push({role:'tool',tool_name:toolName,content:`Tool error: ${message}`});emit({activity:{tool:toolName,status:'error',message}});}
       }
     }
