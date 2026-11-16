@@ -43,6 +43,55 @@ Open `http://localhost:3000` and paste your Hugo endpoint, for example `http://h
 
 The host port defaults to `127.0.0.1`. To expose the app only on this machine's Tailscale interface, set `APP_BIND_IP` in the ignored `.env` file to its Tailscale IPv4 address and restart Compose; the link is `http://<APP_BIND_IP>:3000`. Tailnet peers allowed by your Tailscale ACL can access this single-user app, which has no separate login. Remove `APP_BIND_IP` or set it to `127.0.0.1` to return to loopback-only access. The application container must be able to reach the Hugo host. Tailnet DNS/IP routes available to the host may not be available inside Docker; verify container connectivity if endpoint testing fails. Do not publish the app or a Hugo server directly to the public internet.
 
+## Install on TrueNAS SCALE
+
+The app runs as a Docker Compose Custom App (TrueNAS SCALE 24.10 "Electric Eel" or newer). The same steps apply to any Docker Compose host; TrueNAS specifics are called out inline.
+
+1. **Create a dataset for app data.** In Datasets, add something like `tank/apps/local-harness`. The app stores its SQLite database, uploaded files, and drafts there.
+2. **Clone the repository on the NAS** (SSH or the built-in shell):
+
+   ```bash
+   git clone https://github.com/carmelo-schepis/localmodel-harness.git /mnt/tank/apps/local-harness-src
+   cd /mnt/tank/apps/local-harness-src
+   ```
+
+3. **Generate the SearXNG secret** the same way `scripts/start.sh` does, then create a Compose override that points the data volume at your dataset and publishes the port on the LAN instead of loopback:
+
+   ```bash
+   echo "SEARXNG_SECRET=$(openssl rand -hex 32)" >> .env
+   ```
+
+   Create `compose.truenas.yaml` next to `compose.yaml`:
+
+   ```yaml
+   services:
+     app:
+       ports:
+         - "0.0.0.0:3000:3000"
+       volumes:
+         - /mnt/tank/apps/local-harness:/app/data
+   volumes:
+     app-data:
+   ```
+
+4. **Install the app.** In Apps → Discover → Custom App (Install via YAML), paste a single merged file: the contents of `compose.yaml` with the `app` block's `ports` and `volumes` replaced by the override's values and the trailing `volumes: app-data:` kept. From the shell you can skip the Custom App entirely and run the override directly:
+
+   ```bash
+   docker compose -f compose.yaml -f compose.truenas.yaml up --build -d
+   ```
+
+5. **Open the app** at `http://<truenas-ip>:3000`, register your Hugo endpoint (for example `http://<hugo-ip>:11434/v1`), and paste your Firecrawl key in Connections & settings if you want server-backed web search. SearXNG runs in the same Compose network and needs no configuration.
+
+   If port 3000 is already used on the NAS, publish a different host port (for example `0.0.0.0:3001:3000`) and open the new port instead.
+
+6. **Back up the dataset.** Stop the app (or `docker compose down`), snapshot `tank/apps/local-harness`, then start it again. The SQLite file must not be copied while the app is writing.
+
+Security notes for NAS installs:
+
+- Publishing on `0.0.0.0` exposes the single-user app (no login) to everything that can reach the NAS — your LAN and any bridge it has. Prefer binding to the NAS's Tailscale IP (`APP_BIND_IP`-style port publish, e.g. `100.x.y.z:3000:3000`) or keep it loopback and reach it through an SSH tunnel or the host's Tailscale interface.
+- If the NAS also runs the Hugo model server, the app container can reach it at its Tailscale or LAN address directly; verify from the Compose network if endpoint testing fails.
+- Do not publish port 3000 to the public internet without first deploying with `APP_ACCESS_CODE_HASH` and `APP_SESSION_SECRET` configured (see the Vercel section); the login gate only activates when those are set or `VERCEL` is present.
+
 ## Develop
 
 Requirements: Node 22 LTS and Docker Compose (the development search endpoint is the Compose SearXNG service).
