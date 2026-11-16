@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[2]
 
@@ -31,6 +32,16 @@ class ReleaseTest(unittest.TestCase):
         self.assertNotIn('build',app)
         self.assertEqual(app['healthcheck']['start_period'],'240s')
         self.assertEqual(app['environment']['PYTHONDONTWRITEBYTECODE'],'1')
+
+    def test_stopped_updated_app_is_started(self):
+        with patch.object(installer,'mid',return_value=[{'state':'STOPPED'}]) as middleware:
+            installer.start_if_stopped('hugo-harness')
+        self.assertEqual(middleware.call_args_list[-1].args,('app.start','hugo-harness'))
+
+    def test_auto_started_rollback_is_not_started_twice(self):
+        with patch.object(installer,'mid',return_value=[{'state':'DEPLOYING'}]) as middleware:
+            installer.start_if_stopped('hugo-harness')
+        self.assertEqual(middleware.call_count,1)
 
     def test_prebuilt_release_rejects_stale_or_modified_assets(self):
         with tempfile.TemporaryDirectory() as tmp:
