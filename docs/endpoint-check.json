@@ -1,6 +1,6 @@
 {
   "tested_at_utc": "2026-11-06T00:17:39.482947+00:00",
-  "endpoint": "http://100.126.194.51:11434/v1",
+  "endpoint": "http://hugo.example:11434/v1",
   "tests": [
     {
       "test": "version",

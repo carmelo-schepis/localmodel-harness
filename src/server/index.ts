@@ -298,5 +298,6 @@ app.get('/api/library/:project',async req=>db.all('SELECT id,name,kind,content,c
 export default app;
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
   const port=Number(process.env.PORT??3000);
-  await app.listen({port,host:'0.0.0.0'});
+  // Containers need 0.0.0.0 for published ports; bare local runs should set HOST=127.0.0.1.
+  await app.listen({port,host:process.env.HOST??'0.0.0.0'});
 }

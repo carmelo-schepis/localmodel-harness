@@ -7,7 +7,7 @@ This record separates checks against the application from live Hugo endpoint pro
 - Date: 7 November 2026
 - Node.js: 22 LTS (supported by this project's declared tooling)
 - App: React/Vite client, Fastify server, SQLite local database
-- Live Hugo endpoint: `http://100.126.194.51:11434/v1`
+- Live Hugo endpoint: `http://hugo.example:11434/v1`
 - The Hugo endpoint evidence in `ENDPOINT_VERIFICATION.md` was gathered before app implementation and is retained as such.
 
 ## Commands and results
@@ -24,7 +24,7 @@ This record separates checks against the application from live Hugo endpoint pro
 - `./scripts/start.sh` — the corrected pinned SearXNG image and production app built and started successfully. The app data volume is writable by the unprivileged app user. The only published port is `127.0.0.1:3000`.
 - The running development app returned HTTP 200 from health, project, and endpoint routes. Connecting the live endpoint discovered eight models and their advertised capabilities.
 - Browser workflow: selected `qwen3:1.7b`, streamed “browser connection successful” from the live Hugo server through the app UI, and saw the result in the project conversation.
-- Deployment container route: from inside the running app container, `GET http://100.126.194.51:11434/api/tags` returned HTTP 200 with eight models. Registering the endpoint via the app's HTTP route discovered all eight and their capability metadata.
+- Deployment container route: from inside the running app container, `GET http://hugo.example:11434/api/tags` returned HTTP 200 with eight models. Registering the endpoint via the app's HTTP route discovered all eight and their capability metadata.
 - Deployment chat: streamed `container connection successful` through the app API using `qwen3:1.7b` and the container-to-Hugo route; the stream delivered its completion event.
 - Bundled search network path: from inside the app container, `http://searxng:8080/search?q=ollama&format=json` returned HTTP 200 with JSON. The app search route returned results. This verifies search connectivity only; it does not make results a cited or source-inspected research workflow.
 - Live MCP round trip: the app supplied the MCP-discovered `research__search_web` schema to `qwen3:1.7b`; Hugo requested it, the official MCP SDK client dispatched it to the bundled search server, SearXNG returned results, and the model produced a follow-up answer citing returned result URLs. The app emitted tool running/completed activity events; the browser also completed a tool-directed research prompt. This was one bounded successful case, not coverage of arbitrary MCP servers or failure cases.
