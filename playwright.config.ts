@@ -1,22 +1,47 @@
-import { defineConfig } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { defineConfig, devices } from '@playwright/test';
 
-const apiPort = 4318;
-const vitePort = 4319;
-const mockHugoPort = 14320;
-const dataDir = mkdtempSync(join(tmpdir(), 'local-harness-playwright-'));
-process.env.TEST_MOCK_HUGO_URL = `http://127.0.0.1:${mockHugoPort}`;
+const PORT = 5173;
+const baseURL = process.env.HARNESS_BASE_URL ?? `http://localhost:${PORT}`;
 
 export default defineConfig({
-  testDir: './e2e',
-  fullyParallel: false,
-  reporter: 'list',
-  use: { baseURL: `http://127.0.0.1:${vitePort}`, headless: true },
-  webServer: [
-    { command: `MOCK_HUGO_PORT=${mockHugoPort} npx tsx e2e/mock-hugo-server.ts`, url: `${process.env.TEST_MOCK_HUGO_URL}/health`, reuseExistingServer: false, timeout: 30_000 },
-    { command: `PORT=${apiPort} DATA_DIR=${dataDir} TITLE_MODEL_SERVER_URL=${process.env.TEST_MOCK_HUGO_URL} npm run dev:server`, url: `http://127.0.0.1:${apiPort}/api/health`, reuseExistingServer: false, timeout: 30_000 },
-    { command: `API_PROXY_TARGET=http://127.0.0.1:${apiPort} npm run dev:client -- --host 127.0.0.1 --port ${vitePort} --strictPort`, url: `http://127.0.0.1:${vitePort}`, reuseExistingServer: false, timeout: 30_000 },
-  ],
+	testDir: './tests',
+	timeout: 90_000,
+	expect: { timeout: 15_000 },
+	fullyParallel: false,
+	workers: 1,
+	retries: 0,
+	reporter: [['list'], ['html', { open: 'never' }]],
+	use: {
+		baseURL,
+		trace: 'retain-on-failure',
+		screenshot: 'only-on-failure',
+		viewport: { width: 1440, height: 900 },
+		locale: 'en-US',
+		timezoneId: 'UTC'
+	},
+	projects: [
+		{
+			name: 'auth',
+			testMatch: /auth\.setup\.ts/
+		},
+		{
+			name: 'chromium',
+			use: {
+				...devices['Desktop Chrome'],
+				storageState: 'tests/.auth/admin.json',
+				// Above the app's mobile breakpoint (768px) so the desktop sidebar
+				// renders interactive instead of inert.
+				viewport: { width: 1440, height: 900 }
+			},
+			dependencies: ['auth']
+		}
+	],
+	webServer: process.env.HARNESS_NO_WEB_SERVER
+		? undefined
+		: {
+				command: 'npm run dev',
+				url: baseURL,
+				reuseExistingServer: true,
+				timeout: 120_000
+			}
 });
