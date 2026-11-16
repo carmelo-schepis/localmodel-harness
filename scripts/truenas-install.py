@@ -22,6 +22,11 @@ def mid(method, *args, job=False):
     return json.loads(run('midclt', 'call', *(['-j'] if job else []), method, *(json.dumps(a) for a in args)))
 
 
+def start_if_stopped(name):
+    if mid('app.query', [['name','=',name]])[0]['state'] == 'STOPPED':
+        mid('app.start', name, job=True)
+
+
 def compose_config(revision, image, research_image, data_dir, bind, port, ollama_urls, model, startup_timeout=900):
     return {'services': {
         'app': {
@@ -124,6 +129,8 @@ def main():
     try:
         if old:
             mid('app.update',args.name,{'custom_compose_config':cfg},job=True)
+            # Updating a stopped TrueNAS app preserves its stopped state.
+            start_if_stopped(args.name)
         else:
             mid('app.create',{'app_name':args.name,'custom_app':True,'custom_compose_config':cfg},job=True)
         host='127.0.0.1' if args.bind=='0.0.0.0' else args.bind
@@ -142,6 +149,7 @@ def main():
         if old:
             print(f'Update failed. Restoring previous app configuration; data backups are in {backup}.',flush=True)
             mid('app.update',args.name,{'custom_compose_config':old},job=True)
+            start_if_stopped(args.name)
         raise
 
 

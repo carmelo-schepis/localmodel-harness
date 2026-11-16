@@ -35,7 +35,9 @@ const FETCH_TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS ?? 15000);
 const MAX_REDIRECTS = 3;
 
 const corsHeaders = (origin) => {
-	const allow = ALLOWED_ORIGINS.includes('*') ? '*' : ALLOWED_ORIGINS.includes(origin ?? '') ? origin : null;
+	// Backend requests omit Origin; explicit browser origins still use the allow-list.
+	const requestedOrigin = origin ?? ALLOWED_ORIGINS[0];
+	const allow = ALLOWED_ORIGINS.includes('*') ? '*' : ALLOWED_ORIGINS.includes(requestedOrigin) ? requestedOrigin : null;
 	if (!allow) return null;
 	return {
 		'Access-Control-Allow-Origin': allow,
