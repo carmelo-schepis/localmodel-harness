@@ -37,7 +37,9 @@ Install Docker Compose, clone this repository, and run:
 ./scripts/start.sh
 ```
 
-Open `http://localhost:3000` and paste your Hugo endpoint, for example `http://100.84.10.124:11434/v1`. The helper generates a private SearXNG secret on first use. Application and project files live in the `app-data` Docker volume. Back it up with `docker compose down` followed by a volume backup; the app does not yet include a one-click restore screen.
+Open `http://localhost:3000` and paste your Hugo endpoint, for example `http://hugo.example:11434/v1`. The helper generates a private SearXNG secret on first use. Application and project files live in the `app-data` Docker volume. Back it up with `docker compose down` followed by a volume backup; the app does not yet include a one-click restore screen.
+
+`npm start` outside Docker binds `0.0.0.0` so published container ports work. For a bare local run, set `HOST=127.0.0.1` to keep the server loopback-only.
 
 The host port defaults to `127.0.0.1`. To expose the app only on this machine's Tailscale interface, set `APP_BIND_IP` in the ignored `.env` file to its Tailscale IPv4 address and restart Compose; the link is `http://<APP_BIND_IP>:3000`. Tailnet peers allowed by your Tailscale ACL can access this single-user app, which has no separate login. Remove `APP_BIND_IP` or set it to `127.0.0.1` to return to loopback-only access. The application container must be able to reach the Hugo host. Tailnet DNS/IP routes available to the host may not be available inside Docker; verify container connectivity if endpoint testing fails. Do not publish the app or a Hugo server directly to the public internet.
 

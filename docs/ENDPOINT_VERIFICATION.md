@@ -2,8 +2,8 @@
 
 Date: 6 November 2026. Requests originated from the planning environment on the host, not a future application container. The machine clock reported UTC; the user's timezone is Australia/Sydney.
 
-Endpoint supplied: `http://100.126.194.51:11434/v1`.
-Native base: `http://100.126.194.51:11434`.
+Endpoint supplied: `http://hugo.example:11434/v1`.
+Native base: `http://hugo.example:11434`.
 No authentication was needed for these requests. No models were downloaded, deleted, or explicitly unloaded; inference probes caused ordinary on-demand model loading.
 
 ## Observed results
@@ -33,12 +33,12 @@ See `endpoint-check.json` for timestamped structured responses and failure recor
 
 ```bash
 curl --noproxy '*' --connect-timeout 5 --max-time 15 \
-  http://100.126.194.51:11434/v1/models
+  http://hugo.example:11434/v1/models
 
 curl --noproxy '*' --connect-timeout 5 --max-time 120 \
   -H 'Content-Type: application/json' \
   -d '{"model":"gemma3:1b","messages":[{"role":"user","content":"Reply with exactly: connection successful"}],"max_tokens":16,"temperature":0,"stream":false}' \
-  http://100.126.194.51:11434/v1/chat/completions
+  http://hugo.example:11434/v1/chat/completions
 ```
 
 ## Verification boundaries

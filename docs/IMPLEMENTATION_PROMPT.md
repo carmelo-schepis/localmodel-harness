@@ -9,7 +9,7 @@ Read `DESIGN.md`, `docs/endpoint-check.json`, and any repository instructions be
 Confirmed during planning on 6 November 2026:
 - Before planning, this repository contained only `LICENSE` and an initial Git commit. There is no existing application, framework, API, database, or component system to extend.
 - The attached design has been copied unchanged to `DESIGN.md`.
-- `http://100.126.194.51:11434/v1/models` returned HTTP 200 and eight installed models. Native version discovery returned Hugo `0.33.0`.
+- `http://hugo.example:11434/v1/models` returned HTTP 200 and eight installed models. Native version discovery returned Hugo `0.33.0`.
 - A real `/v1/chat/completions` request using `gemma3:1b` returned “connection successful”; that small request took about 19 seconds including any loading.
 - A bounded retry using `qwen3:1.7b` produced a valid structured `echo_probe` tool call in 8.37 seconds and accepted the matching tool result in a follow-up request. This verifies model tool-call/result handling, not an implemented MCP integration.
 - `embeddinggemma:latest` produced one 768-dimensional embedding in 2.92 seconds.
@@ -77,7 +77,7 @@ Preserve `LICENSE`, `DESIGN.md`, and planning evidence. Ignore generated databas
 Implement this before higher-level workflows:
 
 1. Accept an origin or an OpenAI-style base ending in `/v1`, with optional trailing slash. Validate HTTP(S), reject embedded credentials/query/fragment ambiguity, preserve meaningful reverse-proxy prefixes, and never produce `/v1/v1` or `/v1/api/chat`.
-2. Keep native and compatibility bases separate. For the supplied URL they are `http://100.126.194.51:11434` and `http://100.126.194.51:11434/v1`.
+2. Keep native and compatibility bases separate. For the supplied URL they are `http://hugo.example:11434` and `http://hugo.example:11434/v1`.
 3. Discover native version, installed models, per-model capabilities, and running models using Hugo's documented endpoints. Use native chat and embeddings for Hugo-specific features; verify OpenAI-compatible model discovery and text chat as supported compatibility paths.
 4. If native metadata is unavailable but `/v1` works, retain basic chat in a clearly labelled compatibility mode. Unknown capabilities must remain unknown. Advanced base-path overrides belong in Settings, not first-run setup.
 5. Key model identity by endpoint ID plus model name; retain digests and capability provenance. Refresh metadata in the background with timeouts and bounded concurrency.
@@ -222,7 +222,7 @@ Use Playwright for actual workflows:
 9. Verify project isolation, backup/restore, keyboard navigation, and desktop/tablet/mobile layouts.
 10. Capture relevant screenshots/traces, console errors, and unexpected failed requests. Expected deliberately induced failures must be asserted, not hidden.
 
-Keep opt-in live tests separate from CI. Retest `http://100.126.194.51:11434/v1` with small text, structured tool-call/result round-trip, known image, embeddings, streaming/cancellation, and the actual container network path. Use measured cold-load budgets and record failures honestly. If a second real endpoint is unavailable, state that multi-endpoint behaviour was fixture-verified rather than claiming a live two-server test.
+Keep opt-in live tests separate from CI. Retest `http://hugo.example:11434/v1` with small text, structured tool-call/result round-trip, known image, embeddings, streaming/cancellation, and the actual container network path. Use measured cold-load budgets and record failures honestly. If a second real endpoint is unavailable, state that multi-endpoint behaviour was fixture-verified rather than claiming a live two-server test.
 
 Regression checks must rerun onboarding, plain chat, model/endpoint switching, source links, manual editing, original data preservation, navigation, and persistence whenever their shared components change.
 
