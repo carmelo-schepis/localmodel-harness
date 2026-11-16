@@ -45,46 +45,68 @@ The host port defaults to `127.0.0.1`. To expose the app only on this machine's 
 
 ## Install on TrueNAS SCALE
 
-The app runs as a Docker Compose Custom App (TrueNAS SCALE 24.10 "Electric Eel" or newer). The same steps apply to any Docker Compose host; TrueNAS specifics are called out inline.
+Install from the TrueNAS shell or SSH using Docker Compose (TrueNAS SCALE 24.10 "Electric Eel" or newer). Run the commands as `truenas_admin`; Docker commands use `sudo` because this user may not have access to the Docker socket. Enter your TrueNAS password when prompted.
 
-1. **Create a dataset for app data.** In Datasets, add something like `tank/apps/local-harness`. The app stores its SQLite database, uploaded files, and drafts there.
-2. **Clone the repository on the NAS** (SSH or the built-in shell):
-
-   ```bash
-   git clone https://github.com/carmelo-schepis/localmodel-harness.git /mnt/tank/apps/local-harness-src
-   cd /mnt/tank/apps/local-harness-src
-   ```
-
-3. **Generate the SearXNG secret** the same way `scripts/start.sh` does, then create a Compose override that points the data volume at your dataset and publishes the port on the LAN instead of loopback:
+1. **Create a dataset for app data.** In Datasets, create `tank/apps/local-harness`. Replace `tank` below with your actual pool name (run `ls /mnt` to list pools). The app stores its SQLite database, uploaded files, and drafts there.
+2. **Clone into your home directory**, which is writable by `truenas_admin`:
 
    ```bash
-   echo "SEARXNG_SECRET=$(openssl rand -hex 32)" >> .env
+   cd ~
+   git clone https://github.com/carmelo-schepis/localmodel-harness.git
+   cd ~/localmodel-harness
    ```
 
-   Create `compose.truenas.yaml` next to `compose.yaml`:
+   If you already cloned the repository, skip the clone and run `cd ~/localmodel-harness`.
 
-   ```yaml
+3. **Configure the secret and network binding.** Run this inside `~/localmodel-harness`. It creates a private `.env` only if one does not exist and adds a LAN binding only if no binding is already configured:
+
+   ```bash
+   if [ ! -f .env ]; then
+     (umask 077; printf 'SEARXNG_SECRET=%s\n' "$(openssl rand -hex 32)" > .env)
+   fi
+   if ! grep -q '^APP_BIND_IP=' .env; then
+     printf '\nAPP_BIND_IP=0.0.0.0\n' >> .env
+   fi
+   ```
+
+   If reusing an existing `.env`, make sure it contains a nonempty `SEARXNG_SECRET`. Set `APP_BIND_IP` there to the desired NAS interface address, or `0.0.0.0` for all interfaces. Compose reads this file even when run with `sudo`.
+
+4. **Create the dataset override** next to `compose.yaml`. Replace `tank` in the path if your pool has a different name:
+
+   ```bash
+   cat > compose.truenas.yaml <<'EOF'
    services:
      app:
-       ports:
-         - "0.0.0.0:3000:3000"
        volumes:
          - /mnt/tank/apps/local-harness:/app/data
-   volumes:
-     app-data:
+   EOF
    ```
 
-4. **Install the app.** In Apps → Discover → Custom App (Install via YAML), paste a single merged file: the contents of `compose.yaml` with the `app` block's `ports` and `volumes` replaced by the override's values and the trailing `volumes: app-data:` kept. From the shell you can skip the Custom App entirely and run the override directly:
+   The port binding comes from `APP_BIND_IP` in `.env`; keep `ports` out of this override so Compose does not combine it with the base file's binding. If you previously created an override with `ports`, replace it with the file above.
+
+5. **Build and start both containers:**
 
    ```bash
-   docker compose -f compose.yaml -f compose.truenas.yaml up --build -d
+   cd ~/localmodel-harness
+   sudo docker compose -f compose.yaml -f compose.truenas.yaml up --build -d
+   sudo docker compose -f compose.yaml -f compose.truenas.yaml ps
    ```
 
-5. **Open the app** at `http://<truenas-ip>:3000`, register your Hugo endpoint (for example `http://<hugo-ip>:11434/v1`), and paste your Firecrawl key in Connections & settings if you want server-backed web search. SearXNG runs in the same Compose network and needs no configuration.
+   Use the shell installation above: this repository builds its app image locally and uses a SearXNG sidecar, so the single-container Custom App form is insufficient.
 
-   If port 3000 is already used on the NAS, publish a different host port (for example `0.0.0.0:3001:3000`) and open the new port instead.
+6. **Open the app** at `http://<truenas-ip>:3000`, register your Hugo endpoint (for example `http://<hugo-ip>:11434/v1`), and paste your Firecrawl key in Connections & settings if you want server-backed web search. SearXNG runs in the same Compose network and needs no configuration.
 
-6. **Back up the dataset.** Stop the app (or `docker compose down`), snapshot `tank/apps/local-harness`, then start it again. The SQLite file must not be copied while the app is writing.
+   If port 3000 is already used on the NAS, change the host port in `compose.yaml` from `${APP_BIND_IP:-127.0.0.1}:3000:3000` to `${APP_BIND_IP:-127.0.0.1}:3001:3000`, rerun the start command, and open port 3001 instead.
+
+7. **Back up the dataset.** From `~/localmodel-harness`, stop both containers before taking a snapshot:
+
+   ```bash
+   sudo docker compose -f compose.yaml -f compose.truenas.yaml down
+   ```
+
+   Snapshot `tank/apps/local-harness` in the TrueNAS UI, then run the start command from step 5 again. The SQLite file must not be copied while the app is writing.
+
+Paste only the commands inside the code blocks into the TrueNAS shell; interactive zsh may interpret pasted comment lines as commands. If Docker reports `permission denied` for `/var/run/docker.sock`, use the `sudo docker compose` commands above. If it cannot connect to the daemon even with `sudo`, check that Apps has a pool configured and its service is running in the TrueNAS UI.
 
 Security notes for NAS installs:
 
