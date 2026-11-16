@@ -19,7 +19,7 @@ builder=load('builder','build-prebuilt-image.py')
 
 class ReleaseTest(unittest.TestCase):
     def test_custom_app_keeps_research_private_and_secret_persistent(self):
-        cfg=installer.compose_config('a'*40,'app:revision','research:revision',Path('/mnt/pool/apps/hugo-webui'),'100.64.0.1',3001,['http://one:11434','http://two:11434'],'small:model')
+        cfg=installer.compose_config('a'*40,'app:revision','research:revision',Path('/mnt/pool/apps/hugo-webui'),'100.64.0.1',3001,['http://one:11434','http://two:11434'],'small:model',startup_timeout=240)
         app=cfg['services']['app']; research=cfg['services']['research']
         self.assertNotIn('ports',research)
         self.assertEqual(app['ports'],['100.64.0.1:3001:8080'])
@@ -29,6 +29,8 @@ class ReleaseTest(unittest.TestCase):
         self.assertEqual(research['environment']['OLLAMA_BASE_URL'],'http://two:11434')
         self.assertEqual(app['pull_policy'],'never')
         self.assertNotIn('build',app)
+        self.assertEqual(app['healthcheck']['start_period'],'240s')
+        self.assertEqual(app['environment']['PYTHONDONTWRITEBYTECODE'],'1')
 
     def test_prebuilt_release_rejects_stale_or_modified_assets(self):
         with tempfile.TemporaryDirectory() as tmp:

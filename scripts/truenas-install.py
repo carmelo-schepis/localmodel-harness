@@ -22,7 +22,7 @@ def mid(method, *args, job=False):
     return json.loads(run('midclt', 'call', *(['-j'] if job else []), method, *(json.dumps(a) for a in args)))
 
 
-def compose_config(revision, image, research_image, data_dir, bind, port, ollama_urls, model):
+def compose_config(revision, image, research_image, data_dir, bind, port, ollama_urls, model, startup_timeout=900):
     return {'services': {
         'app': {
             'image': image, 'pull_policy': 'never', 'restart': 'unless-stopped',
@@ -31,13 +31,14 @@ def compose_config(revision, image, research_image, data_dir, bind, port, ollama
             'volumes': [{'type': 'bind', 'source': str(data_dir), 'target': '/app/backend/data', 'bind': {'create_host_path': False}}],
             'environment': {
                 'WEBUI_NAME': 'HUGO Harness', 'WEBUI_AUTH': 'true',
+                'PYTHONDONTWRITEBYTECODE': '1',
                 'WEBUI_SECRET_KEY_FILE': '/app/backend/data/.webui_secret_key',
                 'WEBUI_BUILD_HASH': revision,
                 'OLLAMA_BASE_URLS': ';'.join(ollama_urls),
                 'HUGO_RESEARCH_SERVICE_URL': 'http://research:8787',
                 'ENABLE_VERSION_UPDATE_CHECK': 'false',
             },
-            'healthcheck': {'test': ['CMD', 'curl', '-f', 'http://localhost:8080/health'], 'interval': '15s', 'timeout': '5s', 'start_period': '120s', 'retries': 5},
+            'healthcheck': {'test': ['CMD', 'curl', '-f', 'http://localhost:8080/health'], 'interval': '15s', 'timeout': '5s', 'start_period': f'{startup_timeout}s', 'retries': 5},
         },
         'research': {
             'image': research_image, 'pull_policy': 'never', 'restart': 'unless-stopped',
@@ -54,6 +55,7 @@ def main():
     parser.add_argument('--port', type=int, default=3000)
     parser.add_argument('--ollama-url', action='append', help='Ollama native root URL; repeat for multiple servers')
     parser.add_argument('--research-model', default='qwen3.5:2b')
+    parser.add_argument('--startup-timeout', type=int, default=900, help='First-start readiness budget in seconds (60-1800)')
     parser.add_argument('--image', help='Use an already-built image labelled with this exact source revision')
     args = parser.parse_args()
     if os.geteuid() != 0:
@@ -62,6 +64,8 @@ def main():
         parser.error('Invalid TrueNAS app name')
     if not 1 <= args.port <= 65535:
         parser.error('Port must be between 1 and 65535')
+    if not 60 <= args.startup_timeout <= 1800:
+        parser.error('Startup timeout must be between 60 and 1800 seconds')
     if args.data_dir is None:
         pool=mid('docker.config').get('pool')
         if not pool:
@@ -92,7 +96,7 @@ def main():
         parser.error('Image revision does not match this checkout; refusing to deploy stale code')
     subprocess.run(['docker','build','-t',research_image,'harness-services/deep-research'],cwd=ROOT,check=True)
     args.data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-    cfg = compose_config(revision,image,research_image,args.data_dir,args.bind,args.port,ollama_urls,args.research_model)
+    cfg = compose_config(revision,image,research_image,args.data_dir,args.bind,args.port,ollama_urls,args.research_model,args.startup_timeout)
     backup = args.data_dir.parent / f'{args.name}-backups' / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     backup.mkdir(parents=True, mode=0o700)
     os.chmod(backup.parent,0o700)
@@ -123,7 +127,7 @@ def main():
         else:
             mid('app.create',{'app_name':args.name,'custom_app':True,'custom_compose_config':cfg},job=True)
         host='127.0.0.1' if args.bind=='0.0.0.0' else args.bind
-        deadline=time.monotonic()+180
+        deadline=time.monotonic()+args.startup_timeout
         while True:
             try:
                 with urlopen(f'http://{host}:{args.port}/health',timeout=5) as response:
