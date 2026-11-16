@@ -1,9 +1,87 @@
-import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
-const apiProxy = process.env.API_PROXY_TARGET ?? 'http://localhost:3000'
+import { sveltekit } from '@sveltejs/kit/vite';
+import { defineConfig } from 'vite';
+import { resolveBuildInfo } from './scripts/build-info.js';
 
-// https://vite.dev/config/
+import { viteStaticCopy } from 'vite-plugin-static-copy';
+
+const backendTarget = process.env.WEBUI_BACKEND_URL || 'http://localhost:8080';
+const buildInfo = resolveBuildInfo();
+
 export default defineConfig({
-  plugins: [react()],
-  server: { proxy: { '/api': apiProxy } },
-})
+	resolve: {
+		conditions: ['onnxruntime-web-use-extern-wasm']
+	},
+	plugins: [
+		sveltekit(),
+		viteStaticCopy({
+			targets: [
+				{
+					src: 'src/lib/encryption/vendor/THIRD_PARTY_LICENSES.txt',
+					dest: 'licenses/encryption'
+				},
+				{
+					src: ['node_modules/@novnc/novnc/docs/LICENSE*', 'node_modules/@novnc/novnc/AUTHORS'],
+					dest: 'licenses/novnc'
+				},
+				{
+					src: 'node_modules/onnxruntime-web/dist/*.jsep.*',
+
+					dest: 'wasm'
+				},
+				{
+					src: 'node_modules/pdfjs-dist/wasm/*',
+					dest: 'wasm'
+				}
+			]
+		})
+	],
+	define: {
+		APP_VERSION: JSON.stringify(process.env.npm_package_version),
+		APP_BUILD_HASH: JSON.stringify(buildInfo.hash),
+		APP_BUILD_CHANNEL: JSON.stringify(buildInfo.channel)
+	},
+	build: {
+		target: 'es2022',
+		sourcemap: true
+	},
+	optimizeDeps: {
+		esbuildOptions: { target: 'es2022' }
+	},
+	server: {
+		proxy: {
+			'/api/v1/hugo/research': {
+				target: process.env.HUGO_RESEARCH_DEV_URL || 'http://localhost:8787',
+				changeOrigin: true,
+				rewrite: (path) => path.replace('/api/v1/hugo/research', '')
+			},
+			'/api': {
+				target: backendTarget,
+				changeOrigin: true,
+				ws: true
+			},
+			'/ollama': {
+				target: backendTarget,
+				changeOrigin: true
+			},
+			'/openai': {
+				target: backendTarget,
+				changeOrigin: true
+			},
+			'/oauth': {
+				target: backendTarget,
+				changeOrigin: true
+			},
+			'/ws': {
+				target: backendTarget,
+				changeOrigin: true,
+				ws: true
+			}
+		}
+	},
+	worker: {
+		format: 'es'
+	},
+	esbuild: {
+		pure: process.env.ENV === 'dev' ? [] : ['console.log', 'console.debug', 'console.error']
+	}
+});

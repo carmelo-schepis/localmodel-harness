@@ -1,0 +1,32 @@
+services:
+  open-webui:
+    build:
+      context: .
+      args:
+        BUILD_HASH: ${HUGO_BUILD_HASH:-dev-build}
+        BUILD_CHANNEL: main
+    image: hugo-harness:local
+    restart: unless-stopped
+    depends_on:
+      research:
+        condition: service_healthy
+    ports:
+      - "${HUGO_BIND_IP:-127.0.0.1}:${HUGO_PORT:-3000}:8080"
+    volumes:
+      - hugo-data:/app/backend/data
+    environment:
+      WEBUI_NAME: HUGO Harness
+      WEBUI_AUTH: "true"
+      WEBUI_SECRET_KEY_FILE: /app/backend/data/.webui_secret_key
+      OLLAMA_BASE_URLS: ${OLLAMA_BASE_URLS:-http://100.84.10.124:11434}
+      HUGO_RESEARCH_SERVICE_URL: http://research:8787
+  research:
+    build: ./harness-services/deep-research
+    image: hugo-research:local
+    restart: unless-stopped
+    environment:
+      OLLAMA_BASE_URL: ${RESEARCH_OLLAMA_URL:-http://100.84.10.124:11434}
+      OLLAMA_MODEL: ${RESEARCH_OLLAMA_MODEL:-qwen3.5:2b}
+      ALLOWED_ORIGINS: http://open-webui:8080
+volumes:
+  hugo-data:
