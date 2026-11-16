@@ -28,7 +28,11 @@ def main():
     source=(ROOT/'Dockerfile').read_text()
     base_image=None
     if args.base_image:
-        base_image=subprocess.check_output(['docker','image','inspect',args.base_image,'--format','{{.Id}}'],text=True).strip()
+        base_id=subprocess.check_output(['docker','image','inspect',args.base_image,'--format','{{.Id}}'],text=True).strip()
+        # BuildKit interprets a raw sha256 ID as a Docker Hub repository.
+        # Give the verified local image an immutable, content-derived tag first.
+        base_image='hugo-runtime:'+base_id.removeprefix('sha256:')[:16]
+        subprocess.run(['docker','tag',base_id,base_image],check=True)
         check="import hashlib,json,os; print(json.dumps({'hashes':{n:hashlib.sha256(open('/app/backend/'+n,'rb').read()).hexdigest() for n in ['requirements.txt','requirements-slim.txt']},'slim':os.getenv('USE_SLIM_DOCKER','false')}))"
         runtime=json.loads(subprocess.check_output(['docker','run','--rm','--entrypoint','python',base_image,'-c',check],text=True))
         expected={n:hashlib.sha256((ROOT/'backend'/n).read_bytes()).hexdigest() for n in ['requirements.txt','requirements-slim.txt']}
